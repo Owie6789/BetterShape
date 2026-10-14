@@ -39,6 +39,13 @@ yarn-error.log*
 # vercel
 .vercel
 
+# playwright / browser preview QA (reports & traces; visual baselines under
+# e2e/visual.spec.ts-snapshots/ ARE committed on purpose)
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

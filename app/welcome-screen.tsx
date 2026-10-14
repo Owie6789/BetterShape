@@ -80,7 +80,7 @@ export function WelcomeScreen({
     const visible = showAll ? recentFolders : recentFolders.slice(0, 5);
 
     return (
-        <div className="flex h-full min-h-0 w-full flex-col text-text-primary select-none">
+        <div data-testid="welcome-screen" className="flex h-full min-h-0 w-full flex-col text-text-primary select-none">
             <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-10 py-10 sm:px-14 md:px-16">
                 <div className="flex w-full max-w-2xl flex-col items-start gap-8">
                     <section className="grid w-full grid-cols-2 gap-2.5">

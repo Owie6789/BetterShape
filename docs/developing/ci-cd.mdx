@@ -90,6 +90,17 @@ Release binaries need no baked-in server configuration: BetterShape talks to mod
 
 Release notes grouping: area-only (Editor, Agent, Git, Terminal, Workbench, Updater, Docs, CI) — commit subjects should be `area: short summary`.
 
+### Browser Preview (`preview.yml`) + CI `test-e2e` job
+
+`preview.yml` runs on every PR: builds the static Browser Preview bundle
+(mocked Tauri backend, see [Browser preview & QA](/docs/developing/browser-preview)),
+runs Playwright against it, uploads the bundle and reports as artifacts,
+and — when `VERCEL_TOKEN` / `VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` secrets
+exist — deploys a live Vercel preview linked from a sticky PR comment.
+No secrets: the job still passes (fork-safe) and the artifact is the
+preview. Not a required check. The same Playwright run also exists as
+the additive `test-e2e` job in `ci.yml` (not yet in `ci-success` needs).
+
 ### PR Hygiene (`pr.yml`)
 
 Triggers: PR opened/edited/sync.

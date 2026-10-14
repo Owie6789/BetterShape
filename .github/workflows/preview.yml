@@ -1,0 +1,170 @@
+name: Preview (Browser)
+
+# Deploys a clickable Browser Preview of every PR: the full BetterShape UI
+# with a mocked Tauri backend (lib/preview/tauri-mock.ts), so reviewers and
+# agents can click through the change without building the desktop app.
+#
+# What runs everywhere (including forks):
+#   build the static preview bundle -> Playwright smoke/audit against it ->
+#   upload the bundle + reports as workflow artifacts.
+# What needs repo secrets (skips cleanly when absent):
+#   VERCEL_TOKEN + VERCEL_ORG_ID + VERCEL_PROJECT_ID -> a live Vercel
+#   preview URL, posted as a sticky PR comment. See
+#   docs/developing/browser-preview.mdx for one-time setup.
+# This workflow is deliberately NOT a required status check.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    name: Browser Preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup
+        uses: ./.github/actions/setup
+        with:
+          install-rust: "false"
+          install-system-deps: "false"
+
+      - run: npm ci
+
+      - name: Build Browser Preview bundle
+        run: npm run build:preview
+
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Playwright against the static bundle
+        # Visual baselines are OS/font-sensitive and stay a local gate for
+        # now (see e2e/README.md); everything else runs here.
+        run: npx playwright test --grep-invert @visual
+        env:
+          E2E_STATIC: "1"
+
+      - name: Upload preview bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-preview-${{ github.sha }}
+          path: out/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.sha }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Check Vercel secrets
+        id: vercel-check
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          if [ -n "$VERCEL_TOKEN" ] && [ -n "$VERCEL_ORG_ID" ] && [ -n "$VERCEL_PROJECT_ID" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Vercel secrets not configured — skipping live deploy. The static bundle is in the workflow artifacts; see docs/developing/browser-preview.mdx to enable."
+          fi
+
+      - name: Deploy to Vercel (preview)
+        id: vercel-deploy
+        if: steps.vercel-check.outputs.enabled == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
+          npx --yes vercel build --token="$VERCEL_TOKEN"
+          URL=$(npx --yes vercel deploy --prebuilt --token="$VERCEL_TOKEN")
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "Preview deployed: $URL"
+
+      - name: Comment preview link on PR
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false
+        uses: actions/github-script@v7
+        env:
+          PREVIEW_URL: ${{ steps.vercel-deploy.outputs.url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const marker = "<!-- bettershape-browser-preview -->";
+            const url = process.env.PREVIEW_URL;
+            const lines = [
+              marker,
+              "## Browser Preview",
+              "",
+              url
+                ? `**Live preview:** ${url}`
+                : "_No live URL (Vercel not configured) — download the `browser-preview` artifact from the workflow run and serve `out/` locally, or run `npm run dev:browser`._",
+              "",
+              "The full UI runs in your browser with a mocked Tauri backend (fake project, files, Git, chats — no real data, no model keys). Seed the open-project state by adding `?seed=project` to the URL.",
+              "",
+              `- Playwright report + route audit: [workflow run](${process.env.RUN_URL}) (artifacts)`,
+              `- Commit: \`${context.sha.slice(0, 7)}\``,
+            ];
+            const body = lines.join("\n");
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+      - name: Step summary
+        if: always()
+        env:
+          PREVIEW_URL: ${{ steps.vercel-deploy.outputs.url }}
+        run: |
+          {
+            echo "## Browser Preview"
+            echo ""
+            if [ -n "${PREVIEW_URL:-}" ]; then
+              echo "Live preview: $PREVIEW_URL"
+            else
+              echo "Live preview: not deployed (Vercel secrets absent or deploy skipped)."
+            fi
+            echo ""
+            echo "Static bundle + Playwright report are attached as workflow artifacts (\`browser-preview-${{ github.sha }}\`, \`playwright-report-${{ github.sha }}\`)."
+          } >> "$GITHUB_STEP_SUMMARY"

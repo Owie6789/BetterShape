@@ -46,6 +46,14 @@ const eslintConfig = defineConfig([
       ],
     },
   },
+  {
+    // Playwright fixtures receive a `use()` callback that is not a React
+    // hook; the hooks rule cannot tell the difference.
+    files: ["e2e/**/*.ts", "playwright.config.ts"],
+    rules: {
+      "react-hooks/rules-of-hooks": "off",
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
