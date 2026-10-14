@@ -34,7 +34,13 @@ const bundledChromiumUsable = (): boolean => {
         // to ask where its bundled Chromium would live.
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { chromium } = require("playwright-core") as typeof import("playwright-core");
-        return existsSync(chromium.executablePath());
+        const executablePath = chromium.executablePath();
+        if (!existsSync(executablePath)) return false;
+        // Existence is not usability: a CDN-downloaded browser on a host
+        // without libnss3/libnspr4 cannot start. Probe it the way the
+        // sandboxChromium path resolves its binary, a child Node process.
+        execFileSync(executablePath, ["--version"], { stdio: "ignore", timeout: 15_000 });
+        return true;
     } catch {
         return false;
     }
@@ -49,6 +55,10 @@ const applySandboxLibs = () => {
 };
 
 const sandboxChromium = (): { executablePath?: string; args?: string[] } => {
+    // @sparticuz/chromium ships an Amazon Linux (glibc x86_64/arm64) build.
+    // Handing it to macOS or Windows would fail at launch with a confusing
+    // OS error, so gate on platform before the Node version check.
+    if (process.platform !== "linux") return {};
     // @sparticuz/chromium requires Node ^22.17.0 || >=24.0.0; on older
     // runtimes fail loudly instead of silently returning no browser.
     const [major, minor] = process.versions.node.split(".").map(Number);

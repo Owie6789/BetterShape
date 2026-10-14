@@ -184,3 +184,27 @@ two CodeRabbit). Each was verified against the code before any fix:
 8. `docs/developing/ci-cd.mdx` credited `preview.yml` with deploying.
    Verified real; rewritten so `preview-deploy.yml` owns deployment, the
    sticky comment, and the default-branch activation note.
+
+## Review wave on head 80f111d, 2026-10-15
+
+Three CodeAnt threads, all verified real and fixed:
+
+1. `mark-stale` in `preview-deploy.yml` keyed only on the PR build's
+   conclusion, so a failed Vercel deploy after a green build left the
+   previous live URL presented as current. The job now needs the deploy
+   job as well and runs under `always()` when the build failed or
+   `needs.deploy-preview.result == 'failure'`, while still requiring
+   the `head-current` gate from the previous wave. A secrets-absent
+   skipped deploy does not trigger it.
+2. `playwright.config.ts` treated an existing bundled-Chromium file as
+   usable. On a host without libnss3/libnspr4 the file exists but
+   cannot start, so the fallback never engaged. `bundledChromiumUsable`
+   now probes the binary with `--version` in a child process before
+   accepting it.
+3. The same fallback handed `@sparticuz/chromium`'s Amazon Linux binary
+   to macOS or Windows when no bundled browser existed. `sandboxChromium`
+   now returns no fallback off Linux, so Playwright reports the missing
+   browser with its own actionable error.
+
+Full local suite after these fixes: Playwright 25 of 25 including the
+visual baselines, Vitest 857 of 857, `tsc` clean, ESLint 0 errors.

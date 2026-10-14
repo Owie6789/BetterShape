@@ -284,9 +284,17 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   mark-stale:
-    name: Mark preview stale on failed build
-    needs: resolve-pr
-    if: needs.resolve-pr.outputs.pr-number != '' && needs.resolve-pr.outputs.head-current == 'true' && github.event.workflow_run.conclusion != 'success'
+    name: Mark preview stale on failed build or deploy
+    needs: [resolve-pr, deploy-preview]
+    # Runs when the PR build failed (this workflow fires on completion, so
+    # conclusion != success is known here) or when this run's deploy job
+    # itself failed after a green build. `always()` plus the needs results
+    # keep the healthy path and the skipped-deploy path (no Vercel
+    # secrets) out of this job.
+    if: |
+      always() && needs.resolve-pr.outputs.pr-number != '' &&
+      needs.resolve-pr.outputs.head-current == 'true' &&
+      (github.event.workflow_run.conclusion != 'success' || needs.deploy-preview.result == 'failure')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -299,7 +307,7 @@ jobs:
         env:
           PR_NUMBER: ${{ needs.resolve-pr.outputs.pr-number }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion == 'success' && 'deployment failed' || github.event.workflow_run.conclusion }}
         with:
           script: |
             const marker = "<!-- bettershape-browser-preview -->";
