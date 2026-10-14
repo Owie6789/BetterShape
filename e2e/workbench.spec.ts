@@ -3,7 +3,7 @@ import { test, expect, expectPreviewActive, gotoRoute } from "./fixtures";
 test.use({ seedMode: "project" });
 
 /**
- * Workbench with the seeded project open (seed: "project" — a fake repo at
+ * Workbench with the seeded project open (seed: "project", a fake repo at
  * /preview/bettershape-demo with README.md open, a file tree, one chat).
  * This is the main human-agentic development surface, so it gets the
  * deepest browser coverage.

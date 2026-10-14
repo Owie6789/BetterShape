@@ -7,7 +7,7 @@ import {
 
 /**
  * The Browser Preview IPC handler is the fake backend every Playwright spec
- * (and every deployed PR preview) runs against — pin its contract here so a
+ * (and every deployed PR preview) runs against, pin its contract here so a
  * mock regression fails fast in Vitest instead of in a browser.
  */
 describe("preview invoke handler", () => {
@@ -60,7 +60,7 @@ describe("preview invoke handler", () => {
         expect(log[0].hash).toContain("preview");
     });
 
-    it("never throws for unmocked commands — safe defaults by shape", () => {
+    it("never throws for unmocked commands, safe defaults by shape", () => {
         const { handle } = createPreviewInvokeHandler("welcome");
         expect(handle("get_unmocked_items")).toEqual([]);
         expect(handle("get_something_unmocked")).toBeNull();
@@ -71,7 +71,7 @@ describe("preview invoke handler", () => {
     });
 });
 
-describe("plugin fallback modeling (CodeAnt)", () => {
+describe("plugin fallback modeling", () => {
     it("modeled plugin commands are known; unmodeled ones stay visible as fidelity gaps", () => {
         const { handle, commands } = createPreviewInvokeHandler("welcome");
         const known = new Set([...commands, ...MODELED_PLUGIN_COMMANDS]);
@@ -87,7 +87,7 @@ describe("plugin fallback modeling (CodeAnt)", () => {
     });
 });
 
-describe("backend-parity state transitions (CodeAnt)", () => {
+describe("backend-parity state transitions", () => {
     it("switching projects directly closes the previous project's tabs", () => {
         const { handle, projectState } = createPreviewInvokeHandler("project");
         const stateOf = () => projectState() as {
@@ -117,11 +117,11 @@ describe("backend-parity state transitions (CodeAnt)", () => {
     });
 });
 
-describe("event delivery (CodeAnt)", () => {
+describe("event delivery", () => {
     it("plugin:event|emit reaches tracked listeners; unlisten stops it", () => {
         const delivered: Array<{ event: string; payload: unknown }> = [];
         const { handle, emit } = createPreviewInvokeHandler("welcome");
-        // Callback id and subscription id deliberately differ (CodeAnt).
+        // Callback id and subscription id deliberately differ.
         const subscriptionId = handle("plugin:event|listen", {
             event: "project-state-update",
             handler: 7,
@@ -151,7 +151,7 @@ describe("event delivery (CodeAnt)", () => {
     });
 });
 
-describe("mock fidelity (Sourcery/CodeAnt threads)", () => {
+describe("mock fidelity", () => {
     it("dirty flag follows mark_file_dirty and clears on save_file", () => {
         const { handle, projectState } = createPreviewInvokeHandler("project");
         const readme = `${PREVIEW_PROJECT_PATH}/README.md`;
@@ -196,7 +196,7 @@ describe("mock fidelity (Sourcery/CodeAnt threads)", () => {
     });
 });
 
-describe("git log streaming (CodeAnt)", () => {
+describe("git log streaming", () => {
     it("pages advance without duplicating commits", () => {
         const { handle } = createPreviewInvokeHandler("project");
         handle("git_log_stream_start", { path: PREVIEW_PROJECT_PATH, callerId: "graph" });

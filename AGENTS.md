@@ -236,11 +236,11 @@ The full UI also runs in a plain browser with a mocked Tauri backend
 ```bash
 npm run dev:browser   # launch the app at localhost:48921 (?seed=project for a fake open project)
 npm run qa            # Playwright suite + summary (headless; routes, a11y, screenshots)
-npm run qa:audit      # route crawl only — see e2e/README.md
+npm run qa:audit      # route crawl only, see e2e/README.md
 ```
 
 Specs live in `e2e/` (roles/text locators, seeds via fixtures). If the UI
-needs an IPC shape the mock lacks, extend the mock — do not work around it
+needs an IPC shape the mock lacks, extend the mock, do not work around it
 in a spec. Desktop behaviour still requires `npm run test:all`.
 
 ## Do not

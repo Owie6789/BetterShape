@@ -1,7 +1,7 @@
 import { test, expect, expectPreviewActive, gotoRoute, ROUTES } from "./fixtures";
 
 /**
- * @smoke — every app route must boot in a plain browser with the mocked
+ * @smoke, every app route must boot in a plain browser with the mocked
  * Tauri bridge: no uncaught errors, the route shell renders, and the
  * preview seed is the one the fixture asked for. This is the fastest
  * signal that a change broke app startup.

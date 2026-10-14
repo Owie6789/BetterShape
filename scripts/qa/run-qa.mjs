@@ -18,7 +18,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 
 const require = createRequire(import.meta.url);
-// `playwright/cli.js` is not an exported subpath — resolve via package.json.
+// `playwright/cli.js` is not an exported subpath, resolve via package.json.
 // Spawning node directly avoids `npx` PATH lookup entirely.
 const playwrightCli = join(dirname(require.resolve("playwright/package.json")), "cli.js");
 
@@ -53,10 +53,10 @@ if (existsSync(resultsPath)) {
         console.log("artifacts: playwright-report/index.html · test-results/ (traces, screenshots)");
         console.log("─────────────────────────────────────────────────────────");
     } catch {
-        console.log("[qa] Could not parse test-results/results.json — see Playwright output above.");
+        console.log("[qa] Could not parse test-results/results.json, see Playwright output above.");
     }
 } else {
-    console.log("[qa] No JSON report produced — see Playwright output above.");
+    console.log("[qa] No JSON report produced, see Playwright output above.");
 }
 
 process.exit(run.status ?? 1);

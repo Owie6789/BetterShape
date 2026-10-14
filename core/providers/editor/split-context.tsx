@@ -277,7 +277,7 @@ export function useEditorSplit() {
 /**
  * Non-throwing variant for app chrome that renders outside the editor's
  * file tab (e.g. the workbench Status bar, which is mounted whenever a
- * project is open — including when the active workspace tab is a chat).
+ * project is open, including when the active workspace tab is a chat).
  * Returns null when no split provider is mounted; callers then fall back
  * to the backend's active file.
  */

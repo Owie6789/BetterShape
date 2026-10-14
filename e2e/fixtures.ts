@@ -11,7 +11,7 @@ import { test as base, expect, type Page, type TestInfo } from "@playwright/test
  *  - console/pageerror collection, attached to the test report and
  *    assertable via `expectNoPageErrors()` / `expectNoConsoleErrors()`.
  *
- * Selectors in this suite deliberately use roles and visible text — the app
+ * Selectors in this suite deliberately use roles and visible text, the app
  * has no test-id convention, and role/text locators double as a basic
  * accessibility signal.
  */
@@ -29,7 +29,7 @@ export const ROUTES = [
 
 /**
  * Console errors that are environmental noise in a mocked browser, not app
- * defects. Keep this list short and justified — everything else fails specs
+ * defects. Keep this list short and justified, everything else fails specs
  * that call `expectNoConsoleErrors()`.
  */
 const BENIGN_CONSOLE_PATTERNS: RegExp[] = [
@@ -66,7 +66,7 @@ export const test = base.extend<PreviewFixtures>({
         });
         page.on("requestfailed", (request) => {
             const failure = request.failure();
-            if (failure) consoleErrors.push(`requestfailed: ${request.url()} — ${failure.errorText}`);
+            if (failure) consoleErrors.push(`requestfailed: ${request.url()}, ${failure.errorText}`);
         });
 
         // Seed before any app script runs (init scripts precede page code).
@@ -78,7 +78,7 @@ export const test = base.extend<PreviewFixtures>({
                     JSON.stringify([{ path: "/preview/bettershape-demo", lastOpenedAt: Date.now() - 3_600_000 }]),
                 );
             } catch {
-                /* storage unavailable — welcome screen shows its empty state */
+                /* storage unavailable, welcome screen shows its empty state */
             }
         }, seedMode);
 
@@ -130,7 +130,7 @@ export { expect };
 /**
  * Assert the Browser Preview bridge actually installed on this page. If this
  * fails, the server was started without NEXT_PUBLIC_BROWSER_PREVIEW=1
- * (e.g. Playwright reused a plain `npm run dev` server) — specs should fail
+ * (e.g. Playwright reused a plain `npm run dev` server), specs should fail
  * loudly rather than test a dead, unmocked UI.
  */
 export const expectPreviewActive = async (page: Page, seed: SeedMode) => {

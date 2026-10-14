@@ -2,7 +2,7 @@ import { test, expect, expectPreviewActive, gotoRoute } from "./fixtures";
 
 /**
  * Settings window route (/settings). Runs in the same mocked-browser
- * harness as the main window — no Tauri multi-window needed.
+ * harness as the main window, no Tauri multi-window needed.
  */
 test.describe("settings", () => {
     test.beforeEach(async ({ page }) => {

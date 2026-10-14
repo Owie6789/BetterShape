@@ -81,3 +81,56 @@ evidence levels E0 to E5.
   `git fetch origin` had silently kept the local base ref stale, so
   future base checks fetch the base refspec explicitly and cross-check
   the branch API.
+
+## Principles audit, 2026-10-15 (second base move)
+
+A self-review pass against `REVIEW.md` and `FULL-REVIEW.md` Part I ran
+on head `16fe0c1` (after merging the base at `f1a43d6`). The evidence
+ledger, all at E3 on the local head unless noted:
+
+- Mock IPC contract (seeded project, plugin fallback, event delivery,
+  git log paging): `tests/preview/tauri-mock.test.ts`, 15 of 15 pass.
+- Whole-renderer regression surface: `npm run test`, 106 files and
+  853 tests pass.
+- Type and style gates: `npx tsc --noEmit` clean; full-repo
+  `npm run lint` exit 0 with 157 warnings (baseline class, none from
+  this change).
+- Browser behaviour: `npm run build:preview` then the full Playwright
+  suite in static mode, 25 of 25 pass including the three `@visual`
+  baselines. Local sandbox only; CI runs the same suite without
+  `@visual`.
+- Skills: `npm run skills:verify`, 53 of 53 locked skills verified.
+- Rust gates: not run locally, no Cargo toolchain in the sandbox. The
+  change touches no path under `src-tauri/`; CI runs the Cargo jobs.
+
+Two findings came out of the pass and were fixed before the next push,
+under the rule that minor findings get fixed before bots post them:
+
+1. Style drift against the writing rules in `AGENTS.md`: 48 added lines
+   used em dashes, and 30 comments credited review bots by name
+   (CodeAnt, Sourcery, Kilo). Comments must state the constraint, not
+   the reviewer. Both classes were swept across the files this change
+   owns; explanations were kept, attributions and em dashes removed.
+2. Test names carried the same bot attributions
+   (`describe("event delivery (CodeAnt)")` and similar). Renamed to
+   plain behaviour names.
+
+Checked and deliberately left alone:
+
+- `preview-deploy.yml` runs deploy steps only in the trusted
+  `workflow_run` context; PR code never executes there. Its substring
+  rejection of `VERCEL_`/`DATABASE`/`TOKEN` variable names matches the
+  Vercel CLI contract, so it is not the heuristic defect the review
+  protocol warns about.
+- The a11y gate in `e2e/helpers/audit.ts` fails only on new or
+  increased critical/serious axe violations against
+  `e2e/a11y-baseline.json`. That matches the baseline-ledger pattern,
+  and the baseline moves in one direction only.
+- The CI `test-e2e` job stays out of the `ci-success` gate. The job
+  comment states the promotion condition: a few weeks of green history.
+- SonarCloud still flags the fork-execution shape of
+  `preview-deploy.yml` as a security hotspot. No code change resolves
+  it, because the design is the fix: the workflow runs from the default
+  branch, checks out no PR code, and re-stages a fixed static-only
+  Build Output before deploying. A human must mark it Safe in the
+  SonarCloud UI.

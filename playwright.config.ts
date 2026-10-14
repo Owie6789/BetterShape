@@ -11,7 +11,7 @@ import { defineConfig } from "@playwright/test";
  *
  * By default tests run against `npm run dev:browser` (Next dev + mocked
  * Tauri IPC). Set `E2E_STATIC=1` to run against the production static
- * export instead (`npm run build:preview` first) — that is what the PR
+ * export instead (`npm run build:preview` first), that is what the PR
  * preview workflow does before deploying.
  */
 
@@ -21,9 +21,9 @@ const useStatic = process.env.E2E_STATIC === "1";
 
 /**
  * Resolve a Chromium executable. Order:
- *   1. `PLAYWRIGHT_CHROMIUM_PATH` — explicit override (any environment).
+ *   1. `PLAYWRIGHT_CHROMIUM_PATH`, explicit override (any environment).
  *   2. Playwright's own downloaded browser (`npx playwright install chromium`).
- *   3. `@sparticuz/chromium` — an npm-registry-hosted Chromium build, for
+ *   3. `@sparticuz/chromium`, an npm-registry-hosted Chromium build, for
  *      sandboxes/CI images where the Playwright browser CDN is unreachable.
  *      Set `PLAYWRIGHT_SANDBOX_LIBS` to a directory of shared libraries
  *      (libnss3/libnspr4) to prepend to LD_LIBRARY_PATH if the host lacks them.
@@ -132,7 +132,7 @@ export default defineConfig({
               // Never silently reuse a running server: a developer's plain
               // `next dev` on this port serves the app WITHOUT the mocked
               // IPC bridge (no NEXT_PUBLIC_BROWSER_PREVIEW), and the suite
-              // would test the wrong thing (CodeAnt). Opt in explicitly
+              // would test the wrong thing. Opt in explicitly
               // with E2E_REUSE_SERVER=1 when the server really is
               // `npm run dev:browser`.
               reuseExistingServer:

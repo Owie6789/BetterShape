@@ -16,7 +16,7 @@ test.describe("git manager", () => {
             // The loading skeleton carries this aria-label; it must resolve.
             await expect(page.getByLabel("Loading Git Manager")).toBeHidden({ timeout: 30_000 });
 
-            // Not the "Project is empty" dead end — the seeded repo resolves.
+            // Not the "Project is empty" dead end, the seeded repo resolves.
             await expect(page.getByText("Project is empty")).toBeHidden();
 
             // Positive proof the seeded repo rendered (blank content would

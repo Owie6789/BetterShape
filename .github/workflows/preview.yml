@@ -8,12 +8,12 @@ name: Preview (Browser)
 # revisions: it builds the static preview bundle, runs Playwright
 # smoke/audit against it, and uploads the bundle + reports as artifacts.
 # Artifact names carry the PR head SHA so the trusted deploy workflow
-# (which only knows the head SHA) can find them (Kilo).
+# (which only knows the head SHA) can find them.
 #
 # Deployment lives in .github/workflows/preview-deploy.yml, a trusted
 # `workflow_run` subscriber that GitHub resolves from the default branch —
 # PR-controlled YAML can never reach VERCEL_TOKEN / MORPH_API_KEY
-# (CodeAnt P1). Diffs to that file are security-sensitive.
+#. Diffs to that file are security-sensitive.
 #
 # This workflow is deliberately NOT a required status check.
 

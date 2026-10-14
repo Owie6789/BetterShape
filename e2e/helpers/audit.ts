@@ -4,7 +4,7 @@ import { expect, type Page, type TestInfo } from "@playwright/test";
 /**
  * Audit helpers for the agent QA crawl (`e2e/audit.spec.ts`): axe WCAG
  * scans, full-page screenshots, console/IPC inventories, and navigation
- * timings — everything an agent (or a human reviewer) needs to judge a
+ * timings, everything an agent (or a human reviewer) needs to judge a
  * route without opening it by hand.
  */
 
@@ -33,7 +33,7 @@ export type A11yBaseline = Record<string, Record<string, number>>;
  * Baseline gate: fail only on NEW or INCREASED critical/serious violations
  * versus `e2e/a11y-baseline.json`. Pre-existing debt is pinned there (with
  * node counts) so adopting automated a11y checks does not require fixing
- * the whole app in one PR — but regressions can never sneak in. Lower the
+ * the whole app in one PR, but regressions can never sneak in. Lower the
  * baseline numbers as violations get fixed.
  */
 export const assertA11yWithinBaseline = (
@@ -47,7 +47,7 @@ export const assertA11yWithinBaseline = (
         .filter((v) => v.nodes.length > (allowed[v.id] ?? 0))
         .map(
             (v) =>
-                `${v.id} (${v.impact}) — ${v.nodes.length} node(s), baseline allows ${allowed[v.id] ?? 0}: ${v.help}`,
+                `${v.id} (${v.impact}), ${v.nodes.length} node(s), baseline allows ${allowed[v.id] ?? 0}: ${v.help}`,
         );
     expect(
         regressions,
@@ -82,7 +82,7 @@ export const collectTimings = (page: Page) =>
 /**
  * Deterministic settle: poll until the mock IPC log has been quiet for
  * `quietMs` (post-mount loads done) instead of sleeping a fixed duration.
- * An empty log is NOT settled (CodeAnt): no IPC yet means post-mount
+ * An empty log is NOT settled: no IPC yet means post-mount
  * loads have not even started, so it reports 0 and keeps polling.
  */
 export const waitForIpcQuiet = async (page: Page, quietMs = 300) => {

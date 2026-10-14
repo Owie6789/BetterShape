@@ -1,7 +1,7 @@
 import { test, expect, expectPreviewActive, gotoRoute } from "./fixtures";
 
 /**
- * @visual — pixel baselines for the most stable surfaces. Time is frozen
+ * @visual, pixel baselines for the most stable surfaces. Time is frozen
  * (Playwright clock) and animations disabled so seeded relative dates and
  * transitions cannot flake the comparison. Update baselines deliberately:
  *
@@ -15,7 +15,7 @@ const FIXED_NOW = new Date("2026-01-15T12:00:00Z");
 test.describe("@visual baselines", () => {
     test.beforeEach(async ({ page }) => {
         // Baselines are generated on Linux; other OSes rasterise fonts
-        // differently and would fail despite a correct UI (Sourcery).
+        // differently and would fail despite a correct UI.
         test.skip(process.platform !== "linux", "Visual baselines are Linux-generated");
         await page.clock.setFixedTime(FIXED_NOW);
     });

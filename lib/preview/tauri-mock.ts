@@ -113,7 +113,7 @@ export const PLUGIN_RESULTS: Record<string, unknown> = {
 /**
  * Plugin commands the fallback models deliberately (static results above,
  * the event bus, and the explicit dialog commands). Anything else is
- * reported as unknown so QA audits show the fidelity gaps (CodeAnt).
+ * reported as unknown so QA audits show the fidelity gaps.
  */
 export const MODELED_PLUGIN_COMMANDS = [
     ...Object.keys(PLUGIN_RESULTS),
@@ -158,14 +158,14 @@ const resolveSeedMode = (): PreviewSeedMode => {
             const mode = asSeedMode(read());
             if (mode) return mode;
         } catch {
-            /* source unavailable — try the next one */
+            /* source unavailable, try the next one */
         }
     }
     return "welcome";
 };
 
 /**
- * Pure IPC handler factory — exported separately from the installer so the
+ * Pure IPC handler factory, exported separately from the installer so the
  * Vitest suite can exercise seed state transitions without a browser IPC
  * bridge. Returns a value (or throws) exactly like a Tauri command would.
  */
@@ -186,7 +186,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
     };
     const listeners = new Map<string, Set<number>>();
     // `listen` records the callback id but returns a separate subscription
-    // id; unlisten arrives with the latter (CodeAnt). Map between them.
+    // id; unlisten arrives with the latter. Map between them.
     const subscriptionCallbacks = new Map<number, number>();
     let nextEventId = 1;
 
@@ -209,7 +209,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
                 internals.runCallback(id, { event, id: nextEventId, payload });
             } catch (err) {
                 // Surface listener failures: silently swallowing them lets
-                // QA pass while the UI missed a state update (Sourcery).
+                // QA pass while the UI missed a state update.
                 console.error(`[preview] listener for "${event}" threw`, err);
             }
         });
@@ -238,7 +238,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         get_project_state: () => projectState(),
         set_project_path: (args) => {
             // Backend parity: switching to a *different* project (or none)
-            // closes all tabs on the first workspace change (CodeAnt).
+            // closes all tabs on the first workspace change.
             const nextPath = typeof args.path === "string" ? args.path : null;
             if (nextPath !== state.projectPath) {
                 state.projectPath = nextPath;
@@ -378,7 +378,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         git_sync_status: () => ({ ahead: 0, behind: 0 }),
         git_log: () => previewLogEntries(),
         // Stateful paging: every page must advance, or the graph appends
-        // duplicate commits with duplicate row keys (CodeAnt).
+        // duplicate commits with duplicate row keys.
         git_log_stream_start: () => {
             state.logStreamOffset = 0;
             return null;
@@ -409,7 +409,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         // ── chat / AI ────────────────────────────────────────────────────
         get_conversations: (args) => {
             // Backend parity: a query for another project must not leak
-            // this project's seeded conversation (Sourcery).
+            // this project's seeded conversation.
             const requested = args.projectPath;
             if (typeof requested === "string" && requested !== PREVIEW_PROJECT_PATH) return [];
             return [{
@@ -467,7 +467,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         browser_tabs: () => ({ tabs: [], activeId: null }),
         browser_history: () => [],
         pty_available_shells: () => [],
-        // PackageInfo contract: dependencies arrays must exist (CodeAnt).
+        // PackageInfo contract: dependencies arrays must exist.
         get_package_info: () => ({
             name: "bettershape-demo",
             version: "0.0.0-preview",
@@ -486,7 +486,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
     };
 
     const pluginFallback = (cmd: string, args: Record<string, unknown>): unknown => {
-        // Event plugin: `listen` never reaches here — handle() returns the
+        // Event plugin: `listen` never reaches here, handle() returns the
         // tracked subscription id first. `emit` goes through the tracked
         // listeners so delivery matches listen/unlisten bookkeeping.
         if (cmd === "plugin:event|emit") return handleEventEmit(args);
@@ -523,7 +523,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         if (cmd === "plugin:event|unlisten") {
             const eventName = args.event;
             // Real client sends { event, eventId } where eventId is the
-            // subscription id returned by listen — translate it back to the
+            // subscription id returned by listen, translate it back to the
             // callback id; accept other numeric spellings too.
             const ids = new Set(
                 ["eventId", "handler", "id", "event_id"]
@@ -575,9 +575,9 @@ export const installBrowserPreviewMocks = (): boolean => {
     mockWindows("main");
     mockConvertFileSrc("windows");
     // NOTE: events are handled inside the invoke callback (tracked
-    // listeners + emit()), not via shouldMockEvents — that option would
+    // listeners + emit()), not via shouldMockEvents, that option would
     // intercept plugin:event|listen before this handler and hand back the
-    // real handler id, breaking our listener bookkeeping (CodeAnt).
+    // real handler id, breaking our listener bookkeeping.
     mockIPC((cmd, args) => {
         const unknown = !isKnownInvoke(cmd);
         const recordArgs = args as Record<string, unknown> | undefined;
