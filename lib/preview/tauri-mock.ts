@@ -478,7 +478,8 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         // listeners so delivery matches listen/unlisten bookkeeping.
         if (cmd === "plugin:event|emit") return handleEventEmit(args);
         if (cmd in PLUGIN_RESULTS) return PLUGIN_RESULTS[cmd];
-        if (cmd.startsWith("plugin:event|")) return null;
+        // Any other plugin command (incl. unmodeled plugin:event|*) gets
+        // the null safe default; unknown tracking flags it separately.
         return null;
     }
 
