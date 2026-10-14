@@ -92,14 +92,18 @@ Release notes grouping: area-only (Editor, Agent, Git, Terminal, Workbench, Upda
 
 ### Browser Preview (`preview.yml`) + CI `test-e2e` job
 
-`preview.yml` runs on every PR: builds the static Browser Preview bundle
-(mocked Tauri backend, see [Browser preview & QA](/docs/developing/browser-preview)),
-runs Playwright against it, uploads the bundle and reports as artifacts,
-and, when `VERCEL_TOKEN` / `VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` secrets
-exist, deploys a live Vercel preview linked from a sticky PR comment.
-No secrets: the job still passes (fork-safe) and the artifact is the
-preview. Not a required check. The same Playwright run also exists as
-the additive `test-e2e` job in `ci.yml` (not yet in `ci-success` needs).
+`preview.yml` runs on every PR with no secrets: it builds the static
+Browser Preview bundle (mocked Tauri backend, see
+[Browser preview & QA](/docs/developing/browser-preview)), runs Playwright
+against it, and uploads the bundle and reports as artifacts. Deployment is
+separate: the trusted `preview-deploy.yml` (`workflow_run`, resolved from
+the default branch) deploys the artifact to Vercel when `VERCEL_TOKEN` /
+`VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` exist, owns the sticky PR comment,
+and annotates that comment when a build fails. Without the secrets, the
+artifact is the preview. Deploys start only after `preview-deploy.yml`
+reaches the default branch. Not a required check. The same Playwright run
+also exists as the additive `test-e2e` job in `ci.yml` (not yet in
+`ci-success` needs).
 
 ### PR Hygiene (`pr.yml`)
 

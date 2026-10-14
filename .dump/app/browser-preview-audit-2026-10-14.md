@@ -134,3 +134,53 @@ Checked and deliberately left alone:
   branch, checks out no PR code, and re-stages a fixed static-only
   Build Output before deploying. A human must mark it Safe in the
   SonarCloud UI.
+
+## Review wave on head 83ce964, 2026-10-15
+
+The push of `83ce964` surfaced eight unresolved threads (six CodeAnt,
+two CodeRabbit). Each was verified against the code before any fix:
+
+1. `serve-static.mjs` containment was lexical only, so a symlink inside
+   `out/` could serve a file outside the export. Verified real:
+   `existsSync`/`statSync` follow symlinks. Fix: candidates are compared
+   by `realpathSync` against the real export root. A planted symlink to
+   `/tmp/secret.txt` inside `out/` now returns 404; normal routes still
+   serve 200.
+2. `createReadStream(file).pipe(res)` had no error handler, so a file
+   deleted between stat and open would crash the server. Verified real.
+   Fix: `stream.on("error", () => res.destroy())`.
+3. Mock `delete_path`/`trash_path`/`rename_path`/`copy_path` returned
+   success without touching the fake tree. Verified real. Fix: the four
+   handlers now mutate `state.files`/`state.dirs` and the parent
+   listings; delete closes an open tab whose file vanished (backend
+   parity), rename retargets the open tab. Four contract tests added.
+   First implementation had a self-inflicted bug: `removeTree` ran
+   before the subtree snapshot, so renames moved nothing. Caught by
+   reading the final order before running the tests, not by a failing
+   test; the helper now snapshots, then deletes.
+4. `preview-deploy.yml` could deploy an older run's artifact after the
+   PR head advanced. Verified real in the resolve logic: a resolved PR
+   was never compared with the run's head SHA. Fix: the resolver emits a
+   `head-current` output and both the deploy and mark-stale jobs require
+   it. The same gate also stops an old failed build from marking a newer
+   preview stale.
+5. Mock `git_log` dates were ISO strings. Verified real: Rust
+   `GitLogEntry.date` is `commit.time().seconds().to_string()`
+   (`src-tauri/src/commands/git/mod.rs:2602`), and the graph renders
+   `parseInt(log.date) * 1000`. Preview commits would have rendered as
+   1970 dates. Fix: emit Unix seconds as a string, with a contract test
+   pinning the `^\d{10}$` shape.
+6. Status bar split awareness. Verified true with a correction: Status
+   renders in `features/agent/layout.tsx`, and `EditorSplitProvider`
+   mounts only inside a file tab in `features/agent/workspace/index.tsx`,
+   so the optional split hook is always null in Status and
+   `pickStatusFile` always falls back to the backend active file. The
+   base code called the throwing `useEditorSplit()` from the same
+   position. Wiring split state into workbench chrome is a behaviour
+   decision for the workbench owners and stays out of this change; the
+   misleading comment in `status.tsx` now states the fallback plainly.
+7. `.github/vercel-cli/package.json` described `preview.yml` as the CLI
+   consumer. Verified real; now names `preview-deploy.yml`.
+8. `docs/developing/ci-cd.mdx` credited `preview.yml` with deploying.
+   Verified real; rewritten so `preview-deploy.yml` owns deployment, the
+   sticky comment, and the default-branch activation note.

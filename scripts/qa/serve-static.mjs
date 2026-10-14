@@ -12,11 +12,12 @@
  * Usage: npm run build:preview && npm run preview:browser
  */
 import { createServer } from "node:http";
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, realpathSync, statSync } from "node:fs";
 import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "out");
+const realRoot = realpathSync(root);
 const port = Number(process.env.PORT ?? "48921");
 const host = process.env.HOST ?? "0.0.0.0";
 
@@ -48,16 +49,28 @@ function resolveFile(urlPath) {
     try {
         decoded = decodeURIComponent(urlPath);
     } catch {
-        return null; // malformed percent-encoding → 400/404, never a crash
+        return null; // malformed percent-encoding, 400/404, never a crash
     }
     if (decoded.includes("\0")) return null;
     const clean = normalize(decoded).replace(/^(\.\.[/\\])+/, "");
     const direct = join(root, clean);
     // Hard containment: the resolved path must stay inside `out/`.
     if (direct !== root && !direct.startsWith(root + sep)) return null;
-    if (existsSync(direct) && statSync(direct).isFile()) return direct;
+    const candidates = [];
+    if (existsSync(direct) && statSync(direct).isFile()) candidates.push(direct);
     const asIndex = join(direct, "index.html");
-    if (existsSync(asIndex)) return asIndex;
+    if (existsSync(asIndex)) candidates.push(asIndex);
+    for (const candidate of candidates) {
+        // Lexical containment is not enough: a symlink inside `out/` can
+        // point outside it. Compare real paths before serving.
+        let real;
+        try {
+            real = realpathSync(candidate);
+        } catch {
+            continue;
+        }
+        if (real === realRoot || real.startsWith(realRoot + sep)) return real;
+    }
     return null;
 }
 
@@ -80,7 +93,11 @@ createServer((req, res) => {
         "content-type": MIME[extname(file)] ?? "application/octet-stream",
         "cache-control": "no-store",
     });
-    createReadStream(file).pipe(res);
+    const stream = createReadStream(file);
+    // The file can vanish between the stat above and this open; an
+    // unhandled stream error would take every route down with it.
+    stream.on("error", () => res.destroy());
+    stream.pipe(res);
 }).listen(port, host, () => {
     console.log(`[preview:browser] Serving out/ at http://${host}:${port}`);
 });

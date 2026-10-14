@@ -44,6 +44,7 @@ jobs:
       pull-requests: read
     outputs:
       pr-number: ${{ steps.resolve.outputs.pr-number }}
+      head-current: ${{ steps.resolve.outputs.head-current }}
     steps:
       - name: Resolve PR for the build commit
         id: resolve
@@ -84,12 +85,20 @@ jobs:
               core.info("No PR found for this commit, skipping deploy.");
             } else {
               core.setOutput("pr-number", String(pr.number));
+              // An older run can resolve after the PR head has advanced.
+              // Deploying (or stale-marking) for it would overwrite the
+              // newer preview link, so this run stands down instead.
+              const headCurrent = pr.head.sha === sha;
+              core.setOutput("head-current", String(headCurrent));
+              if (!headCurrent) {
+                core.info(`PR #${pr.number} head has advanced past ${sha}; skipping this run.`);
+              }
             }
 
   deploy-preview:
     name: Deploy preview to Vercel
     needs: resolve-pr
-    if: needs.resolve-pr.outputs.pr-number != '' && github.event.workflow_run.conclusion == 'success'
+    if: needs.resolve-pr.outputs.pr-number != '' && needs.resolve-pr.outputs.head-current == 'true' && github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -277,7 +286,7 @@ jobs:
   mark-stale:
     name: Mark preview stale on failed build
     needs: resolve-pr
-    if: needs.resolve-pr.outputs.pr-number != '' && github.event.workflow_run.conclusion != 'success'
+    if: needs.resolve-pr.outputs.pr-number != '' && needs.resolve-pr.outputs.head-current == 'true' && github.event.workflow_run.conclusion != 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

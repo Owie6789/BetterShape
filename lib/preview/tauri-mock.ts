@@ -134,7 +134,9 @@ const previewLogEntries = () => {
         message: ["preview: seeded commit history", "preview: wire browser QA fixtures", "preview: initial commit"][3 - n],
         author: "Preview Fixture",
         author_email: "preview@example.invalid",
-        date: new Date(now - (3 - n) * 86_400_000).toISOString(),
+        // Rust `GitLogEntry.date` is committer Unix seconds as a string;
+        // the Git graph does `parseInt(log.date) * 1000`.
+        date: String(Math.floor((now - (3 - n) * 86_400_000) / 1000)),
         files_changed: n,
         insertions: n * 12,
         deletions: n * 3,
@@ -231,6 +233,77 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         if (!entries) return;
         const name = fileNameOf(path);
         if (!entries.some((e) => e.name === name)) entries.push({ name, is_dir: isDir });
+    };
+
+    /** Remove a path (and its contents, for directories) from the fake tree. */
+    const removeTree = (path: string) => {
+        delete state.files[path];
+        delete state.dirs[path];
+        for (const key of Object.keys(state.files)) {
+            if (key.startsWith(`${path}/`)) delete state.files[key];
+        }
+        for (const key of Object.keys(state.dirs)) {
+            if (key.startsWith(`${path}/`)) delete state.dirs[key];
+        }
+        const lastSlash = path.lastIndexOf("/");
+        const parent = lastSlash >= 0 ? path.slice(0, lastSlash) || "/" : "/";
+        const entries = state.dirs[parent];
+        if (entries) {
+            const index = entries.findIndex((e) => e.name === fileNameOf(path));
+            if (index >= 0) entries.splice(index, 1);
+        }
+    };
+
+    /** Backend parity for delete/trash: an open tab whose file vanished closes. */
+    const removePath = (path: string) => {
+        if (!path) return;
+        removeTree(path);
+        if (state.openFiles.some((f) => f.path === path)) {
+            state.openFiles = state.openFiles.filter((f) => f.path !== path);
+            if (state.activeFile === path) {
+                state.activeFile = state.openFiles[state.openFiles.length - 1]?.path ?? null;
+            }
+            emitProjectState();
+        }
+    };
+
+    /** Move or copy a fake-tree path, including directory children and open tabs. */
+    const relocatePath = (oldPath: string, newPath: string, copy: boolean) => {
+        if (!oldPath || !newPath || oldPath === newPath) return;
+        const isDir = oldPath in state.dirs;
+        if (!isDir && !(oldPath in state.files)) return;
+        // Snapshot the subtree first: removeTree below deletes the sources.
+        const movedFiles = new Map<string, string>();
+        if (oldPath in state.files) movedFiles.set(newPath, state.files[oldPath]);
+        for (const key of Object.keys(state.files)) {
+            if (key.startsWith(`${oldPath}/`)) {
+                movedFiles.set(`${newPath}${key.slice(oldPath.length)}`, state.files[key]);
+            }
+        }
+        const movedDirs = new Map<string, Array<{ name: string; is_dir: boolean }>>();
+        if (isDir) movedDirs.set(newPath, state.dirs[oldPath].map((e) => ({ ...e })));
+        for (const key of Object.keys(state.dirs)) {
+            if (key.startsWith(`${oldPath}/`)) {
+                movedDirs.set(`${newPath}${key.slice(oldPath.length)}`, state.dirs[key].map((e) => ({ ...e })));
+            }
+        }
+        if (!copy) removeTree(oldPath);
+        for (const [path, content] of movedFiles) state.files[path] = content;
+        for (const [path, entries] of movedDirs) state.dirs[path] = entries;
+        addDirEntry(newPath, isDir);
+        if (!copy) {
+            // An open tab follows its file across a rename.
+            let tabsMoved = false;
+            for (const open of state.openFiles) {
+                if (open.path === oldPath) {
+                    open.path = newPath;
+                    open.name = fileNameOf(newPath);
+                    tabsMoved = true;
+                }
+            }
+            if (state.activeFile === oldPath) state.activeFile = newPath;
+            if (tabsMoved) emitProjectState();
+        }
     };
 
     const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
@@ -331,10 +404,22 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
             }
             return null;
         },
-        delete_path: () => null,
-        trash_path: () => null,
-        rename_path: () => null,
-        copy_path: () => null,
+        delete_path: (args) => {
+            removePath(String(args.path ?? ""));
+            return null;
+        },
+        trash_path: (args) => {
+            removePath(String(args.path ?? ""));
+            return null;
+        },
+        rename_path: (args) => {
+            relocatePath(String(args.oldPath ?? ""), String(args.newPath ?? ""), false);
+            return null;
+        },
+        copy_path: (args) => {
+            relocatePath(String(args.oldPath ?? ""), String(args.newPath ?? ""), true);
+            return null;
+        },
         reveal_path: () => null,
         open_in_app: () => null,
         open_url_external: () => null,

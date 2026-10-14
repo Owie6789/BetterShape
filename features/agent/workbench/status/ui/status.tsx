@@ -148,9 +148,9 @@ const EditorStatusItems = ({
     );
 };
 const Status = () => {
-    // Status renders whenever a project is open, but EditorSplitProvider only
-    // exists inside a file tab, use the optional hook and fall back to the
-    // backend active file when there is no split provider (chat tabs, etc.).
+    // Status renders whenever a project is open. EditorSplitProvider mounts
+    // only inside a file tab, so the split context is absent here and
+    // pickStatusFile falls back to the backend active file.
     const split = useEditorSplitOptional();
     const { active_file, project_path } = useProjectState();
     const statusFile = pickStatusFile(split, active_file);

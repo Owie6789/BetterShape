@@ -71,6 +71,58 @@ describe("preview invoke handler", () => {
     });
 });
 
+describe("git log date contract", () => {
+    it("emits Unix seconds, matching the Rust GitLogEntry string", () => {
+        const { handle } = createPreviewInvokeHandler("project");
+        const log = handle("git_log", { path: PREVIEW_PROJECT_PATH }) as Array<{ date: string }>;
+        for (const entry of log) {
+            // graph.tsx / commit-row.tsx render `new Date(parseInt(date) * 1000)`.
+            // Seconds, not milliseconds and not ISO text.
+            expect(entry.date).toMatch(/^\d{10}$/);
+            expect(parseInt(entry.date, 10)).toBeGreaterThan(1_700_000_000);
+        }
+    });
+});
+
+describe("file mutations", () => {
+    const lsRoot = (handle: (cmd: string, args?: Record<string, unknown>) => unknown) =>
+        (handle("ls_dir", { path: PREVIEW_PROJECT_PATH }) as Array<{ name: string }>).map((e) => e.name);
+
+    it("delete_path removes the entry from listings and closes its tab", () => {
+        const { handle, projectState } = createPreviewInvokeHandler("project");
+        expect(lsRoot(handle)).toContain("README.md");
+        handle("delete_path", { path: `${PREVIEW_PROJECT_PATH}/README.md` });
+        expect(lsRoot(handle)).not.toContain("README.md");
+        const state = projectState() as { open_files: unknown[]; active_file: string | null };
+        expect(state.open_files).toEqual([]);
+        expect(state.active_file).toBeNull();
+    });
+
+    it("rename_path moves content and retargets the open tab", () => {
+        const { handle, projectState } = createPreviewInvokeHandler("project");
+        handle("rename_path", {
+            oldPath: `${PREVIEW_PROJECT_PATH}/README.md`,
+            newPath: `${PREVIEW_PROJECT_PATH}/GUIDE.md`,
+        });
+        expect(lsRoot(handle)).toContain("GUIDE.md");
+        expect(lsRoot(handle)).not.toContain("README.md");
+        expect(handle("read_file", { path: `${PREVIEW_PROJECT_PATH}/GUIDE.md` })).toContain("preview fixture");
+        const state = projectState() as { active_file: string | null };
+        expect(state.active_file).toBe(`${PREVIEW_PROJECT_PATH}/GUIDE.md`);
+    });
+
+    it("copy_path duplicates content and keeps the original", () => {
+        const { handle } = createPreviewInvokeHandler("project");
+        handle("copy_path", {
+            oldPath: `${PREVIEW_PROJECT_PATH}/README.md`,
+            newPath: `${PREVIEW_PROJECT_PATH}/README-copy.md`,
+        });
+        expect(lsRoot(handle)).toContain("README.md");
+        expect(lsRoot(handle)).toContain("README-copy.md");
+        expect(handle("read_file", { path: `${PREVIEW_PROJECT_PATH}/README-copy.md` })).toContain("preview fixture");
+    });
+});
+
 describe("plugin fallback modeling", () => {
     it("modeled plugin commands are known; unmodeled ones stay visible as fidelity gaps", () => {
         const { handle, commands } = createPreviewInvokeHandler("welcome");

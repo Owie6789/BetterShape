@@ -1,7 +1,7 @@
 {
   "name": "bettershape-vercel-cli",
   "private": true,
-  "description": "Lockfile-pinned Vercel CLI for the preview deploy job (see .github/workflows/preview.yml). Bump deliberately via npm install vercel@<version> here.",
+  "description": "Lockfile-pinned Vercel CLI for the preview deploy job (see .github/workflows/preview-deploy.yml). Bump deliberately via npm install vercel@<version> here.",
   "dependencies": {
     "vercel": "64.0.2"
   },
