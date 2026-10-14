@@ -121,7 +121,13 @@ describe("event delivery (CodeAnt)", () => {
     it("plugin:event|emit reaches tracked listeners; unlisten stops it", () => {
         const delivered: Array<{ event: string; payload: unknown }> = [];
         const { handle, emit } = createPreviewInvokeHandler("welcome");
-        handle("plugin:event|listen", { event: "project-state-update", handler: 7 });
+        // Callback id and subscription id deliberately differ (CodeAnt).
+        const subscriptionId = handle("plugin:event|listen", {
+            event: "project-state-update",
+            handler: 7,
+        }) as number;
+        expect(typeof subscriptionId).toBe("number");
+        expect(subscriptionId).not.toBe(7);
         const internals = (
             window as unknown as { __TAURI_INTERNALS__: { runCallback: (id: number, e: unknown) => void } }
         ).__TAURI_INTERNALS__;
@@ -133,7 +139,10 @@ describe("event delivery (CodeAnt)", () => {
             handle("plugin:event|emit", { event: "project-state-update", payload: { ok: 1 } });
             expect(delivered).toEqual([{ event: "project-state-update", id: expect.any(Number), payload: { ok: 1 } }]);
             delivered.length = 0;
-            handle("plugin:event|unlisten", { event: "project-state-update", eventId: 7 });
+            handle("plugin:event|unlisten", {
+                event: "project-state-update",
+                eventId: subscriptionId,
+            });
             emit("project-state-update", { ok: 2 });
             expect(delivered).toEqual([]);
         } finally {

@@ -60,6 +60,12 @@ where it matters.
 Every pull request runs `.github/workflows/preview.yml`: it builds the
 static preview bundle (`npm run build:preview` → `out/`), runs Playwright
 against it, and uploads the bundle plus reports as workflow artifacts.
+That workflow is secretless by design. Deployment runs in
+`.github/workflows/preview-deploy.yml`, a `workflow_run` subscriber that
+GitHub resolves from the default branch: the deploy steps can never be
+modified by a PR, and the only PR-controlled input is the staged build
+artifact (uploaded verbatim, never executed). Secrets
+(`VERCEL_TOKEN`, `MORPH_API_KEY`) exist only there.
 
 To also get a live URL, configure three repository secrets once:
 

@@ -180,6 +180,9 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         branch: "main",
     };
     const listeners = new Map<string, Set<number>>();
+    // `listen` records the callback id but returns a separate subscription
+    // id; unlisten arrives with the latter (CodeAnt). Map between them.
+    const subscriptionCallbacks = new Map<number, number>();
     let nextEventId = 1;
 
     const projectState = () => ({
@@ -424,27 +427,35 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         return BOOLEAN_GETTER.test(cmd) ? false : null;
     }
 
-    function trackListener(cmd: string, args?: Record<string, unknown>) {
-        if (typeof args?.event !== "string") return;
+    function trackListener(cmd: string, args?: Record<string, unknown>): number | undefined {
+        if (typeof args?.event !== "string") return undefined;
         const handlerId = (args as { handler?: unknown }).handler;
         if (cmd === "plugin:event|listen") {
-            if (typeof handlerId !== "number") return;
+            if (typeof handlerId !== "number") return undefined;
+            const subscriptionId = nextEventId++;
+            subscriptionCallbacks.set(subscriptionId, handlerId);
             if (!listeners.has(args.event)) listeners.set(args.event, new Set());
             listeners.get(args.event)?.add(handlerId);
-            return;
+            return subscriptionId;
         }
         if (cmd === "plugin:event|unlisten") {
-            // Real client sends { event, eventId }; accept the `handler`/`id`
-            // arg spellings too so any unlisten path stops delivery.
-            for (const key of ["handler", "eventId", "id", "event_id"]) {
+            // Real client sends { event, eventId } where eventId is the
+            // subscription id returned by listen — translate it back to the
+            // callback id; accept other numeric spellings too.
+            for (const key of ["eventId", "handler", "id", "event_id"]) {
                 const value = (args as Record<string, unknown>)[key];
-                if (typeof value === "number") listeners.get(args.event)?.delete(value);
+                if (typeof value !== "number") continue;
+                const callbackId = subscriptionCallbacks.get(value) ?? value;
+                subscriptionCallbacks.delete(value);
+                listeners.get(args.event)?.delete(callbackId);
             }
         }
+        return undefined;
     }
 
     function handle(cmd: string, args?: Record<string, unknown>): unknown {
-        trackListener(cmd, args);
+        const tracked = trackListener(cmd, args);
+        if (cmd === "plugin:event|listen" && typeof tracked === "number") return tracked;
         const handler = handlers[cmd];
         return handler ? handler(args ?? {}) : fallback(cmd, args ?? {});
     }

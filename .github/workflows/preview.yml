@@ -1,24 +1,19 @@
 name: Preview (Browser)
 
-# Deploys a clickable Browser Preview of every PR: the full BetterShape UI
+# Builds the clickable Browser Preview of every PR: the full BetterShape UI
 # with a mocked Tauri backend (lib/preview/tauri-mock.ts), so reviewers and
 # agents can click through the change without building the desktop app.
 #
-# Job 1 `preview` (NO secrets, safe for PR-controlled code incl. forks):
-#   build the static preview bundle -> Playwright smoke/audit against it ->
-#   upload the bundle + reports + a staged Vercel Build Output tree.
-# Job 2 `deploy-preview` (secrets live ONLY here): downloads the staged
-#   build output and `vercel deploy --prebuilt`s it, posts the sticky PR
-#   comment, and runs optional Morph AI QA.
-# Keeping secrets out of the job that executes PR code is deliberate: a
-# docs-only PR must never run in the same job as VERCEL_TOKEN.
-# NOTE (accepted limitation): the deploy job's STEPS are defined by this
-# workflow file, which GitHub resolves from the PR merge revision — so a
-# same-repository PR that edits this file could in principle touch the
-# secret-bearing steps (fork PRs get no secrets at all). The full fix is a
-# separate trusted deployment workflow fed by `workflow_run`; until then,
-# treat any diff to .github/workflows/preview.yml as security-sensitive
-# and require maintainer review before merging it (CodeAnt).
+# This workflow holds NO secrets and is safe to define from PR-controlled
+# revisions: it builds the static preview bundle, runs Playwright
+# smoke/audit against it, and uploads the bundle + reports + a staged
+# Vercel Build Output tree as artifacts.
+#
+# Deployment lives in .github/workflows/preview-deploy.yml, a trusted
+# `workflow_run` subscriber that GitHub resolves from the default branch —
+# PR-controlled YAML can never reach VERCEL_TOKEN / MORPH_API_KEY
+# (CodeAnt P1). Diffs to that file are security-sensitive.
+#
 # This workflow is deliberately NOT a required status check.
 
 on:
@@ -64,8 +59,9 @@ jobs:
           E2E_STATIC: "1"
 
       - name: Stage Vercel Build Output API tree
-        # The deploy job uploads this verbatim with `vercel deploy
-        # --prebuilt`, so no repo code (and no build) runs near the token.
+        # The trusted deploy workflow uploads this verbatim with
+        # `vercel deploy --prebuilt`, so no repo code (and no build) ever
+        # runs near the token.
         run: |
           rm -rf .vercel/output
           mkdir -p .vercel/output/static
@@ -100,167 +96,3 @@ jobs:
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 14
-
-  deploy-preview:
-    name: Deploy preview to Vercel
-    needs: preview
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      pull-requests: write
-    steps:
-      # This job holds the secrets, so it must never execute PR-head code.
-      # The only checkout is the PR's *base* ref (trusted, not controlled by
-      # the PR author), and only to fetch the lockfile-pinned Vercel CLI
-      # manifest. The deploy itself runs the pinned CLI against the build
-      # artifact produced by the secretless `preview` job.
-      - name: Checkout base ref (trusted tooling only)
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.base.sha || github.sha }}
-          sparse-checkout: .github/vercel-cli
-          sparse-checkout-cone-mode: false
-
-      - name: Check Vercel secrets
-        id: vercel-check
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-        run: |
-          if [ -n "$VERCEL_TOKEN" ] && [ -n "$VERCEL_ORG_ID" ] && [ -n "$VERCEL_PROJECT_ID" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Vercel secrets not configured — skipping live deploy. The static bundle is in the workflow artifacts; see docs/developing/browser-preview.mdx to enable."
-          fi
-
-      - name: Download staged build output
-        if: steps.vercel-check.outputs.enabled == 'true'
-        uses: actions/download-artifact@v4
-        with:
-          name: vercel-output-${{ github.sha }}
-          path: .vercel/output
-
-      - name: Deploy to Vercel (preview)
-        id: vercel-deploy
-        if: steps.vercel-check.outputs.enabled == 'true'
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-        run: |
-          set -euo pipefail
-          # What `vercel pull` would write; env alone is not honored by
-          # every CLI version for --prebuilt deploys.
-          printf '{"orgId":"%s","projectId":"%s"}' "$VERCEL_ORG_ID" "$VERCEL_PROJECT_ID" > .vercel/project.json
-          # CLI installed from the committed lockfile (.github/vercel-cli,
-          # checked out from the trusted base ref above): every resolved
-          # version is locked — never `npx` or a floating tag near secrets.
-          npm ci --prefix .github/vercel-cli --ignore-scripts --no-audit --no-fund
-          DEPLOY_LOG=$(mktemp)
-          ./.github/vercel-cli/node_modules/.bin/vercel deploy --prebuilt --token="$VERCEL_TOKEN" >"$DEPLOY_LOG" 2>&1 || { cat "$DEPLOY_LOG"; exit 1; }
-          cat "$DEPLOY_LOG"
-          URL=$(grep -Eo 'https://[a-zA-Z0-9.-]+\.vercel\.app' "$DEPLOY_LOG" | tail -1)
-          test -n "$URL"
-          echo "url=$URL" >> "$GITHUB_OUTPUT"
-          echo "Preview deployed: $URL"
-
-      # Optional AI QA of the deployed preview (Morph). Skips unless the
-      # MORPH_API_KEY secret exists; also requires the Morph GitHub App
-      # ("Morph Subagents") installed on the repo. Morph explores the UI
-      # this PR changed and posts a video + results on the PR. This is
-      # exploratory QA on top of the deterministic Playwright gate above,
-      # never a replacement for it. Setup: docs/developing/browser-preview.mdx
-      - name: Check Morph secret
-        id: morph-check
-        env:
-          MORPH_API_KEY: ${{ secrets.MORPH_API_KEY }}
-        run: |
-          if [ -n "$MORPH_API_KEY" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Morph AI QA of preview deployment
-        if: steps.morph-check.outputs.enabled == 'true' && steps.vercel-deploy.outputs.url != ''
-        # Pinned to the v2 commit (tags v1/v2 both point here) — never a
-        # floating tag for a third-party action receiving an API key.
-        uses: morphllm/preview-test-action@5db8557c25e42df64548961440a4bc2c41a3705c # v2
-        with:
-          api-key: ${{ secrets.MORPH_API_KEY }}
-          preview-url: ${{ steps.vercel-deploy.outputs.url }}
-          instructions: |
-            This is BetterShape, a desktop-agent workbench running with a
-            mocked backend and fake data (no login, no real API keys).
-            Exercise the screens this PR changed. Also try: the welcome
-            screen's four actions (/?seed=welcome), the workbench with a
-            project open (/?seed=project), Settings section navigation
-            (/settings), and the Git manager (/git). Flag anything
-            unclickable, overlapping, blank, or silently broken.
-
-      - name: Comment preview link on PR
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false
-        uses: actions/github-script@v7
-        env:
-          PREVIEW_URL: ${{ steps.vercel-deploy.outputs.url }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        with:
-          script: |
-            const marker = "<!-- bettershape-browser-preview -->";
-            const url = process.env.PREVIEW_URL;
-            const lines = [
-              marker,
-              "## Browser Preview",
-              "",
-              url
-                ? `**Live preview:** ${url}`
-                : "_No live URL from this workflow._ If the Vercel GitHub App is connected to this repo, it posts its own preview link on this PR. Otherwise download the `browser-preview` artifact from the workflow run and serve `out/` locally, or run `npm run dev:browser`.",
-              "",
-              "The full UI runs in your browser with a mocked Tauri backend (fake project, files, Git, chats — no real data, no model keys). Seed the open-project state by adding `?seed=project` to the URL.",
-              "",
-              `- Playwright report + route audit: [workflow run](${process.env.RUN_URL}) (artifacts)`,
-              `- Commit: \`${context.sha.slice(0, 7)}\``,
-            ];
-            const body = lines.join("\n");
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              per_page: 100,
-            });
-            const existing = comments.find((c) => c.body && c.body.includes(marker));
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body,
-              });
-            }
-
-      - name: Step summary
-        if: always()
-        env:
-          PREVIEW_URL: ${{ steps.vercel-deploy.outputs.url }}
-        run: |
-          {
-            echo "## Browser Preview"
-            echo ""
-            if [ -n "${PREVIEW_URL:-}" ]; then
-              echo "Live preview: $PREVIEW_URL"
-            else
-              echo "Live preview: not deployed (Vercel secrets absent or deploy skipped)."
-            fi
-            echo ""
-            echo "Static bundle + Playwright report are attached as workflow artifacts (\`browser-preview-${{ github.sha }}\`, \`playwright-report-${{ github.sha }}\`)."
-          } >> "$GITHUB_STEP_SUMMARY"
