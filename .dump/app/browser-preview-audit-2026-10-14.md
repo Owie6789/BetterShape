@@ -61,3 +61,23 @@ evidence levels E0 to E5.
   approval agent reported `context_truncated` on head `74012b7` and
   approved nothing; it self-describes as shadow/advisory. Re-tag after
   every push, per `AGENTS.md`.
+
+## Addendum, 2026-10-15
+
+- The sandbox working tree was found reset to the branch cut point
+  (`764f135`) with the pre-merge file state as uncommitted changes,
+  while the remote branch already held the merged and audited head
+  (`532f182`). Evidence: `git log origin/arena/b0d84ccc-app` showed
+  `4d56402`, `252bd64`, `532f182`; local `HEAD` showed only `764f135`.
+  Recovery: stashed the stale snapshot as `arena-snapshot-backup-pre-resync`
+  and reset the tree to the remote head. No work was lost. The stash
+  tracked files differ from the new head only where the base merge
+  superseded them (`AGENTS.md`, `eslint.config.mjs`, `package.json`,
+  search index), and the untracked snapshot files are earlier versions
+  of files the later commits extended.
+- The base moved again after the merge, to `f1a43d6` (review policy
+  tightening plus `.agents/PREFLIGHT.md`). Merged as `0e6b590` with no
+  conflicts. The branch commit also records that the plain
+  `git fetch origin` had silently kept the local base ref stale, so
+  future base checks fetch the base refspec explicitly and cross-check
+  the branch API.
