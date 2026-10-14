@@ -6,7 +6,9 @@
  * Sets NEXT_PUBLIC_BROWSER_PREVIEW=1 so `lib/preview/tauri-mock.ts`
  * installs the mocked Tauri IPC bridge, builds the design-preview runtime
  * bundle (same first step as `tauri dev`), then starts Next dev on
- * 0.0.0.0:$PORT (default 48921, the usual dev port).
+ * $HOST:$PORT (default 127.0.0.1:48921 — loopback only, so the mocked
+ * app is never LAN-exposed by accident; set HOST=0.0.0.0 when a sandbox
+ * or VM needs to forward the port in).
  *
  * Usage: npm run dev:browser   →   http://localhost:48921
  * Seed a fake open project instead of the welcome screen:
