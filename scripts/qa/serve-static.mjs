@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// skipcq: JS-0833
 /**
  * Serve the Browser Preview static export (`out/`) over HTTP.
  *

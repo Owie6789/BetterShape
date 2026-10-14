@@ -84,71 +84,62 @@ const EditorStatusItems = ({
     statusFile: string;
     projectPath: string | null;
     languageLabel: string;
-    typescriptVersion: string | null | undefined;
+    typescriptVersion: string | null;
     onIndentation: () => void;
     onEol: () => void;
 }) => {
     const { editorStatus } = useEditorStatus();
     const openLanguagePicker = () => openLanguageModePicker(statusFile, editorStatus.language);
+    const openLinePicker = () =>
+        window.dispatchEvent(
+            new CustomEvent("bettershape-command-palette", {
+                detail: { mode: "goto_line", placeholder: "Line : Column" },
+            }),
+        );
     return (
         <>
-                        <StatusItem
-                            label="Go to Line/Column"
-                            onClick={() => {
-                                window.dispatchEvent(
-                                    new CustomEvent("bettershape-command-palette", {
-                                        detail: { mode: "goto_line", placeholder: "Line : Column" },
-                                    }),
-                                );
-                            }}
-                        >
-                            {`Ln ${editorStatus.line}, Col ${editorStatus.column}`}
-                        </StatusItem>
+            <StatusItem label="Go to Line/Column" onClick={openLinePicker}>
+                {`Ln ${editorStatus.line}, Col ${editorStatus.column}`}
+            </StatusItem>
 
-                        <StatusItem label="Select Indentation" onClick={onIndentation}>
-                            <span className="hidden sm:inline">
-                                {editorStatus.insertSpaces
-                                    ? `Spaces: ${editorStatus.spaces}`
-                                    : `Tab Size: ${editorStatus.spaces}`}
-                            </span>
-                            <span className="sm:hidden">{editorStatus.spaces}</span>
-                        </StatusItem>
+            <StatusItem label="Select Indentation" onClick={onIndentation}>
+                <span className="hidden sm:inline">
+                    {editorStatus.insertSpaces
+                        ? `Spaces: ${editorStatus.spaces}`
+                        : `Tab Size: ${editorStatus.spaces}`}
+                </span>
+                <span className="sm:hidden">{editorStatus.spaces}</span>
+            </StatusItem>
 
-                        <StatusItem label="Select Encoding">
-                            <span className="hidden md:inline">UTF-8</span>
-                        </StatusItem>
+            <StatusItem label="Select Encoding">
+                <span className="hidden md:inline">UTF-8</span>
+            </StatusItem>
 
-                        <StatusItem label="Select End of Line Sequence" onClick={onEol}>
-                            <span className="hidden md:inline">{editorStatus.eol}</span>
-                        </StatusItem>
+            <StatusItem label="Select End of Line Sequence" onClick={onEol}>
+                <span className="hidden md:inline">{editorStatus.eol}</span>
+            </StatusItem>
 
-                        <Tooltip content="Format Document">
-                            <button
-                                type="button"
-                                className="hidden lg:flex h-full px-1.5 items-center text-text-primary hover:bg-panel-hover transition-colors"
-                                onClick={() => dispatchEditorAction("format")}
-                            >
-                                <Icon icon={Code20Regular} />
-                            </button>
-                        </Tooltip>
+            <Tooltip content="Format Document">
+                <button
+                    type="button"
+                    className="hidden lg:flex h-full px-1.5 items-center text-text-primary hover:bg-panel-hover transition-colors"
+                    onClick={() => dispatchEditorAction("format")}
+                >
+                    <Icon icon={Code20Regular} />
+                </button>
+            </Tooltip>
 
-                        <StatusItem
-                            label="Select Language Mode"
-                            onClick={openLanguagePicker}
-                        >
-                            <span className="hidden sm:inline">
-                                {languageLabel}
-                                {typescriptVersion && editorStatus.language.includes("typescript") && (
-                                    <span className="text-text-muted ml-1">TS {typescriptVersion}</span>
-                                )}
-                            </span>
-                            <span className="sm:hidden">{languageLabel.slice(0, 3).toUpperCase()}</span>
-                        </StatusItem>
+            <StatusItem label="Select Language Mode" onClick={openLanguagePicker}>
+                <span className="hidden sm:inline">
+                    {languageLabel}
+                    {typescriptVersion && editorStatus.language.includes("typescript") && (
+                        <span className="text-text-muted ml-1">TS {typescriptVersion}</span>
+                    )}
+                </span>
+                <span className="sm:hidden">{languageLabel.slice(0, 3).toUpperCase()}</span>
+            </StatusItem>
 
-                        <PythonInterpreterStatus
-                            language={editorStatus.language}
-                            projectPath={projectPath}
-                        />
+            <PythonInterpreterStatus language={editorStatus.language} projectPath={projectPath} />
         </>
     );
 };

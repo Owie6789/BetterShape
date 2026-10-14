@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// skipcq: JS-0833
 /**
  * Build the statically-exportable Browser Preview bundle into `out/`.
  *

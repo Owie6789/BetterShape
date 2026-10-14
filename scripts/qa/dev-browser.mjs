@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// skipcq: JS-0833
 /**
  * Launch the full BetterShape UI in a plain browser (no Tauri, no Rust).
  *

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// skipcq: JS-0833
 /**
  * Agent QA entry point: run the whole Playwright browser suite, then print
  * a compact machine-friendly summary (counts, failing specs, artifact
