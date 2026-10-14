@@ -393,10 +393,19 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
     };
 
 
-    function pluginFallback(cmd: string): unknown {
+    function handleEventEmit(args: Record<string, unknown>): unknown {
+        const event = typeof args.event === "string" ? args.event : null;
+        if (!event) return null;
+        emit(event, args.payload);
+        return null;
+    }
+
+    function pluginFallback(cmd: string, args: Record<string, unknown>): unknown {
         // Event plugin: listeners are tracked in `trackListener` so the
-        // `emit()` helper above can deliver to them.
+        // `emit()` helper above can deliver to them; emit must go through
+        // the tracked listeners (CodeAnt).
         if (cmd === "plugin:event|listen") return nextEventId++;
+        if (cmd === "plugin:event|emit") return handleEventEmit(args);
         if (cmd in PLUGIN_RESULTS) return PLUGIN_RESULTS[cmd];
         if (cmd.startsWith("plugin:event|")) return null;
         return null;
@@ -406,8 +415,8 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
     const BOOLEAN_GETTER = /^(is|has|can)_/;
 
     /** Safe fallback for any command without an explicit handler. */
-    function fallback(cmd: string): unknown {
-        if (cmd.startsWith("plugin:")) return pluginFallback(cmd);
+    function fallback(cmd: string, args: Record<string, unknown>): unknown {
+        if (cmd.startsWith("plugin:")) return pluginFallback(cmd, args);
         // Plural getters/listers return collections; singular getters fall
         // back to null (returning [] for a string/object-typed command
         // crashes callers, e.g. `title.trim()`).
@@ -416,17 +425,28 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
     }
 
     function trackListener(cmd: string, args?: Record<string, unknown>) {
-        if (cmd !== "plugin:event|listen" || typeof args?.event !== "string") return;
+        if (typeof args?.event !== "string") return;
         const handlerId = (args as { handler?: unknown }).handler;
-        if (typeof handlerId !== "number") return;
-        if (!listeners.has(args.event)) listeners.set(args.event, new Set());
-        listeners.get(args.event)?.add(handlerId);
+        if (cmd === "plugin:event|listen") {
+            if (typeof handlerId !== "number") return;
+            if (!listeners.has(args.event)) listeners.set(args.event, new Set());
+            listeners.get(args.event)?.add(handlerId);
+            return;
+        }
+        if (cmd === "plugin:event|unlisten") {
+            // Real client sends { event, eventId }; accept the `handler`/`id`
+            // arg spellings too so any unlisten path stops delivery.
+            for (const key of ["handler", "eventId", "id", "event_id"]) {
+                const value = (args as Record<string, unknown>)[key];
+                if (typeof value === "number") listeners.get(args.event)?.delete(value);
+            }
+        }
     }
 
     function handle(cmd: string, args?: Record<string, unknown>): unknown {
         trackListener(cmd, args);
         const handler = handlers[cmd];
-        return handler ? handler(args ?? {}) : fallback(cmd);
+        return handler ? handler(args ?? {}) : fallback(cmd, args ?? {});
     }
 
     // `commands` (the handler keys) lets the installer flag unknown invokes
@@ -457,6 +477,10 @@ export const installBrowserPreviewMocks = (): boolean => {
     // but stays inert unless the build-time flag above is set.)
     mockWindows("main");
     mockConvertFileSrc("windows");
+    // NOTE: events are handled inside the invoke callback (tracked
+    // listeners + emit()), not via shouldMockEvents — that option would
+    // intercept plugin:event|listen before this handler and hand back the
+    // real handler id, breaking our listener bookkeeping (CodeAnt).
     mockIPC((cmd, args) => {
         const unknown = !isKnownInvoke(cmd);
         const recordArgs = args as Record<string, unknown> | undefined;

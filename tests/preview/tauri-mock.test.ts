@@ -116,3 +116,28 @@ describe("backend-parity state transitions (CodeAnt)", () => {
         expect(activeOf()).toBe(PREVIEW_PROJECT_PATH + "/README.md");
     });
 });
+
+describe("event delivery (CodeAnt)", () => {
+    it("plugin:event|emit reaches tracked listeners; unlisten stops it", () => {
+        const delivered: Array<{ event: string; payload: unknown }> = [];
+        const { handle, emit } = createPreviewInvokeHandler("welcome");
+        handle("plugin:event|listen", { event: "project-state-update", handler: 7 });
+        const internals = (
+            window as unknown as { __TAURI_INTERNALS__: { runCallback: (id: number, e: unknown) => void } }
+        ).__TAURI_INTERNALS__;
+        const original = internals.runCallback;
+        internals.runCallback = (id: number, e: unknown) => {
+            if (id === 7) delivered.push(e as { event: string; payload: unknown });
+        };
+        try {
+            handle("plugin:event|emit", { event: "project-state-update", payload: { ok: 1 } });
+            expect(delivered).toEqual([{ event: "project-state-update", id: expect.any(Number), payload: { ok: 1 } }]);
+            delivered.length = 0;
+            handle("plugin:event|unlisten", { event: "project-state-update", eventId: 7 });
+            emit("project-state-update", { ok: 2 });
+            expect(delivered).toEqual([]);
+        } finally {
+            internals.runCallback = original;
+        }
+    });
+});
