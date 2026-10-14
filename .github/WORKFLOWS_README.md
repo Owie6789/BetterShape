@@ -46,6 +46,14 @@ Concurrency: `release-${ref}` cancel-in-progress false (never cancel release).
 - Secret heuristic
 - Size warning (>2000 lines)
 
+## PR policy check: `pr-policy.yml`
+
+- Runs when a PR opens, is edited, receives a new head, or reopens.
+- Checks the required PR sections, `npm run test:all`, the CodeAnt body tag, a Yes or No criticality classification, and that the recorded 40-character head SHA matches the current PR head.
+- Marks repository policy and workflow changes as critical from the changed file list. Critical PRs must include the CodeRabbit body tag; other PRs must omit it. Automatic CodeRabbit reviews for PRs targeting `main` remain separate.
+- Uses `pull-requests: read` and does not check out or execute PR code.
+- The check validates PR body content. Contributors still post the required standalone bot comments and record their links and head SHA.
+
 ## Composite Setup (`.github/actions/setup`)
 
 DRY setup for Node, Rust, system deps, caches.

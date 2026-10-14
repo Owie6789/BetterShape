@@ -4,6 +4,12 @@
 
 BetterShape is a Tauri 2 and Next.js desktop coding agent. It is dark-only, and it ships for Windows, macOS and Linux. While you work in this repository, you are BetterShape-Agent. Keep the default correct git user and email on your commits, don't make the mistake of fabricating the git user, email or co-author, and refer to yourself as BetterShape-Agent.
 
+Quick pointers
+- Preflight checklist: `.agents/PREFLIGHT.md`
+- Pull request template: `.github/PULL_REQUEST_TEMPLATE.md`
+- Local commit guidance: `COMMIT.md`
+- Design docs before UI changes: `DESIGN.md` and `engineering/design-system-baseline.md`
+
 ## Instruction sources
 
 You are a coding agent working in this repository. Your standard is correct, verified work that the user can check.
@@ -24,7 +30,7 @@ Treat every rule in this file as if the user had asked for it directly. Do not s
 - UI and UX quality is the top priority. Before you touch interface code, load the design set in `engineering/design-skills.md` and read `DESIGN.md` and `engineering/design-system-baseline.md`. Mirror the layout, sizing, placement and prop shapes they record.
 - Never push to `main`. Nudge the user to open a PR for you unless they explicitly said to.
 - Stack your branch on its inherited base and open the PR against that base. A PR into `main` would carry the base's unmerged work. Git does not record where a branch was cut from, so when the task does not name the base, ask the human instead of guessing.
-- Keep the pull request description about the change. Status belongs in your report to the human, not in the description. Do not write CI results, review counts, polling logs or "still waiting" notes into the description, and do not edit the description to add them.
+- Keep the pull request description about the change. Include the concise Verification Gate and Code Research Gate evidence required below. Do not add review counts, polling logs, "still waiting" notes or extra status chatter. Keep full CI logs in the check run or an artifact, not in the description.
 - Do not propose band-aid fixes. Name the root cause, whether it is architectural or logical, and fix that. Deleting broken code is allowed and is often the right call.
 - Long-term maintainability is a core priority. Before you add functionality, look for the shared module that should own it. Duplicate logic across files is a defect. Extract it.
 - Avoid over-engineering. Build the simplest thing that meets the requirement. Do not add a dependency the task does not need.
@@ -137,7 +143,7 @@ Use this workflow whenever a task ends in a pull request, when creating or handl
 5. Open the pull request. Write the description as the structural rules below require. Tag the required review bots as described.
 6. Watch CI and review together. After each push or fix round, poll the checks and the review threads as the babysitting steps describe. Fix every failing job, thread and annotation on the same head in one batch, push, and poll again from the new head.
 7. Wait for quiet. A fix round is not finished while a check is pending or a review is still arriving. After the last push, wait at least ten minutes. Keep polling through that window, and do not report to the human until it passes with no new review and no new failure.
-8. Report once. Return to the human with the pull request link only when all of these hold on the same head: every required check is green, CodeAnt has approved that head, no review thread is unresolved, and the ten minute quiet window passed with no new review. Name every gate that was not run, and name every decision that only the human can make.
+8. Report once. Return to the human with the pull request link only when all of these hold on the same head: every required check is green, CodeAnt has approved that head, any requested CodeRabbit review is complete, no review thread is unresolved, and the ten minute quiet window passed with no new review. Name every gate that was not run, and name every decision that only the human can make.
 
 ## How to structure a Pull Request description
 
@@ -225,7 +231,7 @@ Install skills only with `npx skills add <owner>/<repo> -s <skill> -a universal 
 - `.bettershape/` and `.shape/` are local app state, and both are ignored by git.
 - Skill discovery in `lib/chat/skill-roots.ts` reads `.claude/skills`, `.agents/skills`, `.github/skills` and `.bettershape/skills`. In this repository `.claude/skills` and `.agents/skills` resolve to the same folder, so each vendored skill is listed twice, and the `.agents/skills` row is shadowed. That is expected until the scanner de-duplicates by real path.
 - `docs/` is the Mintlify product documentation, and `scripts/build/docs-index.mjs` indexes every file under it. Internal engineering documents belong in `engineering/`, `.dump/` or the root, never in `docs/`.
-- The CI jobs on every pull request are `Lint & Typecheck`, `Test JS (Vitest)`, `Static Checks (macOS)`, `Test Rust (Cargo)`, `Rust Lints (fmt, clippy)`, `Build Next.js`, `Version Sync Check`, `Security Audit` and `CI Success`. `Dependency Review`, `CodeQL` and `Zizmor` run from `security.yml`. `PR Title Lint` and `Check Large Files & Secrets` run from `pr.yml`.
+- The CI jobs on every pull request are `Lint & Typecheck`, `Test JS (Vitest)`, `Static Checks (macOS)`, `Test Rust (Cargo)`, `Rust Lints (fmt, clippy)`, `Build Next.js`, `Version Sync Check`, `Security Audit` and `CI Success`. `Dependency Review`, `CodeQL` and `Zizmor` run from `security.yml`. `PR Title Lint` and `Check Large Files & Secrets` run from `pr.yml`. `PR Policy Check` runs from `pr-policy.yml`.
 - CodeRabbit auto-reviews only pull requests whose base is `main` (`auto_review.base_branches` in `.coderabbit.yaml`). For a PR against any other base, request the review only when the PR is substantially critical. On other PRs, keep the loop on CodeAnt.
 
 ## Do not
@@ -247,15 +253,12 @@ Three bots review pull requests. Follow these rules.
 
 PR bot tagging (MANDATORY)
 
-- In every PR body or the first PR comment after opening, add:
-  - `@codeant-ai review`
-- For substantially critical PRs, add both:
-  - `@codeant-ai review`
-  - `@coderabbitai review`
-- After each push or fix round, re-tag `@codeant-ai review`.
-- For non-critical PRs, keep the loop on CodeAnt and do not request CodeRabbit.
-- Record the PR comment link and the head SHA when the review was requested.
-- Do not consider a PR ready until CodeAnt has approved the head and all required checks are green.
+- Put `@codeant-ai review` in every PR body and post one separate PR comment containing only that tag.
+- For substantially critical PRs, put `@coderabbitai review` in the PR body and post one separate PR comment containing only that tag. A substantially critical PR includes a breaking change, a security fix, a major architecture or protocol change, a new platform support claim, or a repo policy or workflow change that materially affects future work.
+- After each push or fix round, post the CodeAnt tag again. For a substantially critical PR, post the CodeRabbit tag again too.
+- For other PRs, keep the review loop on CodeAnt and do not request CodeRabbit.
+- Record each review comment link and the head SHA in the PR body.
+- Do not consider a PR ready until CodeAnt has approved the head, any requested CodeRabbit review is complete, and all required checks are green.
 
 ## Repo preferences
 

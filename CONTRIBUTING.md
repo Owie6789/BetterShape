@@ -39,7 +39,11 @@ A CI or release pull request must say which failure it fixes, how you checked it
 
 `main` is protected. Open a PR. Direct pushes are rejected.
 
-CodeRabbit reviews every PR. CI runs `npm run test:all`. Address both before merge.
+Request CodeAnt review on every PR. Request CodeRabbit only for substantially critical changes. This includes breaking changes, security fixes, major architecture or protocol changes, new platform support claims, and repository policy or workflow changes that materially affect future work.
+
+CodeRabbit also reviews PRs targeting `main` automatically. For other bases, request it only when the change meets one of the critical criteria.
+
+CI runs `npm run test:all`. Address CodeAnt feedback, any CodeRabbit feedback, and required CI failures before merge.
 
 - One concern per PR
 - Say what you changed and how you checked it

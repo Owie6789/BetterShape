@@ -92,12 +92,21 @@ Release notes grouping: area-only (Editor, Agent, Git, Terminal, Workbench, Upda
 
 ### PR Hygiene (`pr.yml`)
 
-Triggers: PR opened/edited/sync.
+Triggers: PR opened, edited, synchronized, or reopened.
 
 - **title-lint**: Warns if title doesn't match `area: description` or conventional type. Non-blocking but nudges contributors.
 - **check-large-files**: Fails if file >5MB (excluding `.git`, `node_modules`, `target`, `.next`, `out`, `dist`).
 - **secrets heuristic**: Greps diff for private key / API key patterns.
 - **label-check**: Warns if PR >2000 lines.
+
+### PR policy check: `pr-policy.yml`
+
+Triggers: PR opened, edited, synchronized, or reopened.
+
+- Requires the PR body to include the required sections, `npm run test:all`, the CodeAnt tag, a Yes or No criticality classification, and the current 40-character head SHA.
+- Treats changes to repository policy and workflow files as substantially critical. Critical PRs must include the CodeRabbit body tag. Other PRs must omit it. Automatic CodeRabbit reviews for PRs targeting `main` remain separate.
+- Uses `pull-requests: read` only. It reads changed file names and does not check out or run PR code.
+- The workflow checks body text, not whether review comments were posted. Contributors still post the required standalone bot comments and record their links and head SHA.
 
 ## Composite Action (`setup`)
 
