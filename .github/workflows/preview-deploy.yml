@@ -22,8 +22,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: preview-deploy-${{ github.event.workflow_run.head_sha }}
-  cancel-in-progress: false
+  # Per triggering branch (not per commit): rapid pushes queue under one
+  # group and cancel-in-progress lets the newest deploy win, so an older
+  # build can never overwrite the PR's preview link afterwards (CodeAnt).
+  group: preview-deploy-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
 
 jobs:
   resolve-pr:

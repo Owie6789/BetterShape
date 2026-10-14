@@ -47,6 +47,8 @@ test.describe("@visual baselines (project seed)", () => {
     test.use({ seedMode: "project" });
 
     test.beforeEach(async ({ page }) => {
+        // Same Linux-only baseline guard as the describe above.
+        test.skip(process.platform !== "linux", "Visual baselines are Linux-generated");
         await page.clock.setFixedTime(FIXED_NOW);
     });
 

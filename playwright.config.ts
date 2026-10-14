@@ -52,7 +52,8 @@ const sandboxChromium = (): { executablePath?: string; args?: string[] } => {
     // @sparticuz/chromium requires Node ^22.17.0 || >=24.0.0; on older
     // runtimes fail loudly instead of silently returning no browser.
     const [major, minor] = process.versions.node.split(".").map(Number);
-    const supported = major > 24 || major === 24 || (major === 22 && minor >= 17);
+    // Exactly the package's range: ^22.17.0 || >=24.0.0 (Node 23 excluded).
+    const supported = major >= 24 || (major === 22 && minor >= 17);
     if (!supported) {
         throw new Error(
             `Playwright's bundled Chromium is unavailable and the @sparticuz/chromium fallback requires Node ^22.17.0 || >=24.0.0 (current: ${process.versions.node}). ` +

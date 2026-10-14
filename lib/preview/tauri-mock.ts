@@ -224,7 +224,8 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
 
     /** Register a created path in its parent directory listing. */
     const addDirEntry = (path: string, isDir: boolean) => {
-        const parent = path.slice(0, path.lastIndexOf("/")) || "/";
+        const lastSlash = path.lastIndexOf("/");
+        const parent = lastSlash >= 0 ? path.slice(0, lastSlash) || "/" : "/";
         const entries = state.dirs[parent];
         if (!entries) return;
         const name = fileNameOf(path);
@@ -380,7 +381,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         git_log_stream_stop: () => null,
         git_branch_graph: () => ({
             nodes: [{
-                name: "main", commit: "preview000300000000000000000000000000", author: "Preview Fixture",
+                name: state.branch, commit: "preview000300000000000000000000000000", author: "Preview Fixture",
                 date: new Date().toISOString(), ahead: 0, x: 0, y: 0, parents: [], isCurrent: true, isRemote: false,
             }],
             width: 1, height: 1, currentBranch: state.branch, total: 1, truncated: false,
@@ -508,6 +509,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
             return subscriptionId;
         }
         if (cmd === "plugin:event|unlisten") {
+            const eventName = args.event;
             // Real client sends { event, eventId } where eventId is the
             // subscription id returned by listen — translate it back to the
             // callback id; accept other numeric spellings too.
@@ -519,7 +521,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
             ids.forEach((value) => {
                 const callbackId = subscriptionCallbacks.get(value) ?? value;
                 subscriptionCallbacks.delete(value);
-                listeners.get(args.event as string)?.delete(callbackId);
+                listeners.get(eventName)?.delete(callbackId);
             });
         }
         return undefined;
