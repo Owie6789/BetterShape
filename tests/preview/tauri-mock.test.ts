@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
     createPreviewInvokeHandler,
+    MODELED_PLUGIN_COMMANDS,
     PREVIEW_PROJECT_PATH,
 } from "@/lib/preview/tauri-mock";
 
@@ -67,5 +68,21 @@ describe("preview invoke handler", () => {
         expect(handle("do_something_unmocked")).toBeNull();
         expect(handle("plugin:app|version")).toBe("1.0.3-preview");
         expect(typeof handle("plugin:event|listen", { event: "x", handler: 1 })).toBe("number");
+    });
+});
+
+describe("plugin fallback modeling (CodeAnt)", () => {
+    it("modeled plugin commands are known; unmodeled ones stay visible as fidelity gaps", () => {
+        const { handle, commands } = createPreviewInvokeHandler("welcome");
+        const known = new Set([...commands, ...MODELED_PLUGIN_COMMANDS]);
+        const isKnownInvoke = (cmd: string): boolean =>
+            known.has(cmd) || cmd.startsWith("plugin:dialog|");
+        expect(handle("plugin:app|version")).toBe("1.0.3-preview");
+        expect(isKnownInvoke("plugin:app|version")).toBe(true);
+        expect(isKnownInvoke("plugin:event|listen")).toBe(true);
+        expect(isKnownInvoke("plugin:dialog|message")).toBe(true);
+        // Not modeled: returns a safe default AND is flagged unknown.
+        expect(handle("plugin:opener|open")).toBeNull();
+        expect(isKnownInvoke("plugin:opener|open")).toBe(false);
     });
 });

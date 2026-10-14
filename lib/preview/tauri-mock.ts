@@ -92,6 +92,33 @@ const PREVIEW_DIRS: Record<string, Array<{ name: string; is_dir: boolean }>> = {
     ],
 };
 
+/** Static plugin-command results (event listen/emit handled in fallback). */
+export const PLUGIN_RESULTS: Record<string, unknown> = {
+    "plugin:app|version": "1.0.3-preview",
+    "plugin:app|name": "BetterShape (Browser Preview)",
+    "plugin:store|load": 1,
+    "plugin:store|get": null,
+    "plugin:store|keys": [],
+    "plugin:store|entries": [],
+    "plugin:store|length": 0,
+    "plugin:dialog|open": null,
+    "plugin:dialog|save": null,
+    "plugin:notification|is_permission_granted": false,
+    "plugin:deep-link|get_current": null,
+};
+
+/**
+ * Plugin commands the fallback models deliberately (static results above,
+ * the event bus, and the dialog family answering false). Anything else is
+ * reported as unknown so QA audits show the fidelity gaps (CodeAnt).
+ */
+export const MODELED_PLUGIN_COMMANDS = [
+    ...Object.keys(PLUGIN_RESULTS),
+    "plugin:event|listen",
+    "plugin:event|emit",
+    "plugin:event|unlisten",
+];
+
 const fileNameOf = (path: string): string => path.split("/").pop() ?? path;
 
 const asSeedMode = (value: string | null | undefined): PreviewSeedMode | null =>
@@ -356,20 +383,6 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         get_outline: () => null,
     };
 
-    /** Static plugin-command results (event listen/emit handled below). */
-    const PLUGIN_RESULTS: Record<string, unknown> = {
-        "plugin:app|version": "1.0.3-preview",
-        "plugin:app|name": "BetterShape (Browser Preview)",
-        "plugin:store|load": 1,
-        "plugin:store|get": null,
-        "plugin:store|keys": [],
-        "plugin:store|entries": [],
-        "plugin:store|length": 0,
-        "plugin:dialog|open": null,
-        "plugin:dialog|save": null,
-        "plugin:notification|is_permission_granted": false,
-        "plugin:deep-link|get_current": null,
-    };
 
     function pluginFallback(cmd: string): unknown {
         // Event plugin: listeners are tracked in `trackListener` so the
@@ -425,7 +438,9 @@ export const installBrowserPreviewMocks = (): boolean => {
 
     const seed = resolveSeedMode();
     const { handle, commands } = createPreviewInvokeHandler(seed);
-    const known = new Set(commands);
+    const known = new Set([...commands, ...MODELED_PLUGIN_COMMANDS]);
+    const isKnownInvoke = (cmd: string): boolean =>
+        known.has(cmd) || cmd.startsWith("plugin:dialog|");
     const invokes: PreviewInvokeRecord[] = [];
 
     // Synchronous install: this module is only imported from
@@ -436,7 +451,7 @@ export const installBrowserPreviewMocks = (): boolean => {
     mockWindows("main");
     mockConvertFileSrc("windows");
     mockIPC((cmd, args) => {
-        const unknown = !cmd.startsWith("plugin:") && !known.has(cmd);
+        const unknown = !isKnownInvoke(cmd);
         const recordArgs = args as Record<string, unknown> | undefined;
         invokes.push({ cmd, args: recordArgs, unknown, at: Date.now() });
         if (invokes.length > 500) invokes.shift();
