@@ -30,7 +30,7 @@ export const runAxeAudit = async (page: Page) => {
 export type A11yBaseline = Record<string, Record<string, number>>;
 
 /**
- * Ratchet gate: fail only on NEW or INCREASED critical/serious violations
+ * Baseline gate: fail only on NEW or INCREASED critical/serious violations
  * versus `e2e/a11y-baseline.json`. Pre-existing debt is pinned there (with
  * node counts) so adopting automated a11y checks does not require fixing
  * the whole app in one PR — but regressions can never sneak in. Lower the

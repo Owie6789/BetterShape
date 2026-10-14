@@ -6,7 +6,7 @@
  * `window.__TAURI_INTERNALS__`. This module installs the official
  * `@tauri-apps/api/mocks` IPC bridge with a deterministic, in-memory fake
  * backend (fake project, files, Git repo, conversations) so the full UI can
- * be launched, clicked through, screenshot, and audited in any browser —
+ * be launched, clicked through, screenshotted, and audited in any browser.
  * locally, in Playwright, and in deployed PR previews.
  *
  * Safety: installation is doubly gated.
@@ -197,7 +197,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
     });
 
     /** Deliver a Tauri event to callbacks registered via `listen()`. */
-    function emit(event: string, payload: unknown) {
+    const emit = (event: string, payload: unknown) => {
         const ids = listeners.get(event);
         if (!ids || typeof window === "undefined") return;
         const internals = (window as unknown as {
@@ -213,7 +213,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
                 console.error(`[preview] listener for "${event}" threw`, err);
             }
         });
-    }
+    };
 
     const emitProjectState = () => emit("project-state-update", projectState());
 
@@ -478,14 +478,14 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
     };
 
 
-    function handleEventEmit(args: Record<string, unknown>): unknown {
+    const handleEventEmit = (args: Record<string, unknown>): unknown => {
         const event = typeof args.event === "string" ? args.event : null;
         if (!event) return null;
         emit(event, args.payload);
         return null;
-    }
+    };
 
-    function pluginFallback(cmd: string, args: Record<string, unknown>): unknown {
+    const pluginFallback = (cmd: string, args: Record<string, unknown>): unknown => {
         // Event plugin: `listen` never reaches here — handle() returns the
         // tracked subscription id first. `emit` goes through the tracked
         // listeners so delivery matches listen/unlisten bookkeeping.
@@ -494,22 +494,22 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         // Any other plugin command (incl. unmodeled plugin:event|*) gets
         // the null safe default; unknown tracking flags it separately.
         return null;
-    }
+    };
 
     const PLURAL_GETTER = /^(get|list|load|search|discover|fetch)_.+s$/;
     const BOOLEAN_GETTER = /^(is|has|can)_/;
 
     /** Safe fallback for any command without an explicit handler. */
-    function fallback(cmd: string, args: Record<string, unknown>): unknown {
+    const fallback = (cmd: string, args: Record<string, unknown>): unknown => {
         if (cmd.startsWith("plugin:")) return pluginFallback(cmd, args);
         // Plural getters/listers return collections; singular getters fall
         // back to null (returning [] for a string/object-typed command
         // crashes callers, e.g. `title.trim()`).
         if (PLURAL_GETTER.test(cmd)) return [];
         return BOOLEAN_GETTER.test(cmd) ? false : null;
-    }
+    };
 
-    function trackListener(cmd: string, args?: Record<string, unknown>): number | undefined {
+    const trackListener = (cmd: string, args?: Record<string, unknown>): number | undefined => {
         if (typeof args?.event !== "string") return undefined;
         const handlerId = (args as { handler?: unknown }).handler;
         if (cmd === "plugin:event|listen") {
@@ -537,14 +537,14 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
             });
         }
         return undefined;
-    }
+    };
 
-    function handle(cmd: string, args?: Record<string, unknown>): unknown {
+    const handle = (cmd: string, args?: Record<string, unknown>): unknown => {
         const tracked = trackListener(cmd, args);
         if (cmd === "plugin:event|listen" && typeof tracked === "number") return tracked;
         const handler = handlers[cmd];
         return handler ? handler(args ?? {}) : fallback(cmd, args ?? {});
-    }
+    };
 
     // `commands` (the handler keys) lets the installer flag unknown invokes
     // for QA reports without a hand-maintained mirror list that can drift.

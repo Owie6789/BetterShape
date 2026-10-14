@@ -18,7 +18,7 @@ const a11yBaseline = JSON.parse(
 
 /**
  * @audit — the agent QA crawl. For every route: load it, scan it with axe
- * (WCAG 2.x AA, ratcheted against e2e/a11y-baseline.json), screenshot it, and inventory
+ * (WCAG 2.x AA, checked against e2e/a11y-baseline.json), screenshot it, and inventory
  * console errors, page errors, and IPC usage (including commands the
  * fixture does not mock yet). Produces `browser-audit.json` + one PNG per
  * route in the test artifacts, so an agent can review UI state from a CI
