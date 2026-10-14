@@ -273,3 +273,14 @@ export function useEditorSplit() {
     if (!ctx) throw new Error("useEditorSplit must be used within EditorSplitProvider");
     return ctx;
 }
+
+/**
+ * Non-throwing variant for app chrome that renders outside the editor's
+ * file tab (e.g. the workbench Status bar, which is mounted whenever a
+ * project is open — including when the active workspace tab is a chat).
+ * Returns null when no split provider is mounted; callers then fall back
+ * to the backend's active file.
+ */
+export function useEditorSplitOptional() {
+    return useContext(EditorGroupsContext) ?? null;
+}

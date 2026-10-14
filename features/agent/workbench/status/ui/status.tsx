@@ -13,7 +13,7 @@ import { useProjectState, commands } from "@/lib/backend";
 import { useAllProgressMessages } from "@/lib/ui/status-progress";
 import { getLanguageLabel } from "@/features/editor/lib/language-options";
 import { openLanguageModePicker } from "@/features/editor/ui/main/ui/language-picker";
-import { useEditorSplit } from "@/core/providers/editor";
+import { useEditorSplitOptional } from "@/core/providers/editor";
 import {
     dispatchEditorAction,
     openStatusPalette,
@@ -24,10 +24,15 @@ import { StatusItem } from "./status-item";
 import { PythonInterpreterStatus } from "./python-interpreter";
 
 export default function Status() {
-    const { splitEnabled, focusedGroup, getGroupActiveFile } = useEditorSplit();
+    // Status renders whenever a project is open, but EditorSplitProvider only
+    // exists inside a file tab — use the optional hook and fall back to the
+    // backend active file when there is no split provider (chat tabs, etc.).
+    const split = useEditorSplitOptional();
     const { active_file, project_path } = useProjectState();
     const statusFile =
-        splitEnabled && focusedGroup === "right" ? getGroupActiveFile("right") : active_file;
+        split?.splitEnabled && split.focusedGroup === "right"
+            ? split.getGroupActiveFile("right")
+            : active_file;
     const progressMessages = useAllProgressMessages();
     const { editorStatus, typescriptVersion } = useEditorStatus();
     const latestProgressMessage = progressMessages[progressMessages.length - 1] ?? null;
