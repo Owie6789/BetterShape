@@ -1,4 +1,5 @@
-
+>[!IMPORTANT] 
+> Our fork improves and evolves the Shape codebase under the Business Source License 1.1 (BSL 1.1) as published by the upstream project. We respect the upstream copyright and licensing terms, and we are not relicensing the original code. The upstream BSL permits many forms of use, contribution, and self‑hosting today but explicitly restricts offering the software as a standalone, paid competing IDE until the Change Date (2030‑06‑22), after which the code transitions to Apache‑2.0. Because those restrictions create practical barriers for adoption, contribution, and integration in some settings, this fork focuses on improving usability, security, and interoperability within the bounds of the license. This statement is informational and not legal advice, if you plan to redistribute, sell, or integrate this software commercially, please review the LICENSE and consult legal counsel.
 
 
 # BetterShape
