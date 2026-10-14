@@ -35,7 +35,7 @@ npm run qa                        # full browser suite + agent summary
 | `npm run test:e2e:update-snapshots` | Regenerate visual baselines (review the diff) |
 
 The suite covers route boot smoke tests, the welcome screen, Settings, the
-Git manager, the seeded workbench, an accessibility crawl ratcheted
+Git manager, the seeded workbench, an accessibility crawl checked
 against `e2e/a11y-baseline.json`, and visual baselines. The operator
 runbook for agents lives in `e2e/README.md`.
 
@@ -66,7 +66,7 @@ GitHub resolves from the default branch: the deploy steps can never be
 modified by a PR, and the only PR-controlled input is the static bundle
 artifact. The deployer re-stages the Vercel Build Output tree itself with
 a fixed static-only config (no functions, no PR-supplied routes) and
-uploads that verbatim — artifact content is never executed. Secrets
+uploads that verbatim. Artifact content is never executed. Secrets
 (`VERCEL_TOKEN`, `MORPH_API_KEY`) exist only there.
 
 To also get a live URL, configure three repository secrets once:
@@ -81,12 +81,12 @@ To also get a live URL, configure three repository secrets once:
 (static output, mocked backend), so Vercel's Git integration works too:
 import the repo in Vercel and every PR gets a preview deployment. Without
 the secrets the workflow still passes and the static bundle remains
-available as an artifact — forks need no configuration.
+available as an artifact, and forks need no configuration.
 
 Any static host can serve the same `out/` directory (GitHub Pages,
 Netlify, Cloudflare Pages); Vercel is not required.
 
-Two connection styles — pick one, or you will get duplicate deployments:
+Two connection styles. Pick one, or you will get duplicate deployments:
 
 - **Vercel GitHub App (simplest):** import the repo at
   [vercel.com/new](https://vercel.com/new). Installing the **Vercel**
@@ -98,8 +98,8 @@ Two connection styles — pick one, or you will get duplicate deployments:
 - **GitHub Actions deploy:** add `VERCEL_TOKEN` (Vercel → Settings →
   Tokens), `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID` (the last two are in
   `.vercel/project.json` after `npx vercel link`) as repository secrets.
-  `preview.yml` then deploys itself and maintains a sticky comment with
-  the URL.
+  The trusted `preview-deploy.yml` then deploys the bundle built by
+  `preview.yml` and maintains a sticky comment with the URL.
 
 Do not add real model keys to Vercel Preview environment variables: the
 preview build is self-contained and fake-data only.
@@ -109,14 +109,14 @@ preview build is self-contained and fake-data only.
 [Morph](https://morphllm.com) is a GitHub App ("Morph Subagents") that
 watches each PR's preview deployment, clicks through the UI the diff
 touched in a real browser, and posts a video plus results on the PR.
-It complements the deterministic Playwright gate — exploratory AI QA on
-top, never instead of it. Free to try.
+It complements the deterministic Playwright gate. Treat it as
+exploratory AI QA on top, never instead of it. Free to try.
 
 1. Install the app from
    [morphllm.com/dashboard/integrations/github](https://morphllm.com/dashboard/integrations/github)
    and select this repository.
 2. In the same dashboard, **Connect Vercel** so Morph can reach previews
-   behind Vercel Deployment Protection (Pro/Enterprise) — bypass secrets
+   behind Vercel Deployment Protection (Pro/Enterprise). Bypass secrets
    are populated automatically. On Hobby plans previews are public and
    this is a no-op.
 3. Optional: set path filters (for example only test PRs touching
@@ -125,15 +125,15 @@ top, never instead of it. Free to try.
 4. No login setup is needed: the preview uses fake data with no auth.
 
 If you use the GitHub Actions deploy style instead of the Vercel GitHub
-App, also add a `MORPH_API_KEY` repository secret: `preview.yml` already
+App, also add a `MORPH_API_KEY` repository secret: `preview-deploy.yml`
 contains a gated Morph step that runs against the deployed URL and
 skips cleanly when the secret is absent.
 
 <Warning>
 Preview deployments are public URLs containing the full UI with fake
 data. Never add real model keys or secrets to a preview build, and do
-not treat a preview as evidence the desktop (Tauri/Rust) behaviour works —
-that still needs `npm run test:all` and the native build.
+not treat a preview as evidence the desktop (Tauri/Rust) behaviour works.
+That still needs `npm run test:all` and the native build.
 </Warning>
 
 ## Found by this suite

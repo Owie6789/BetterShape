@@ -5,9 +5,9 @@ the Tauri backend replaced by a deterministic mock. They exist so that:
 
 - **humans** can launch and click through the whole app locally without
   compiling Rust (`npm run dev:browser`),
-- **agents** can run QA headlessly — crawl every route, catch console/page
-  errors, scan accessibility, screenshot UI state, and assert behaviour
-  (`npm run qa`),
+- **agents** can run QA headlessly. The suite crawls every route, catches
+  console/page errors, scans accessibility, screenshots UI state, and
+  asserts behaviour (`npm run qa`).
 - **PR reviewers** get a deployable static preview of the change
   (`.github/workflows/preview.yml`, Vercel-ready via `vercel.json`).
 
@@ -53,8 +53,8 @@ audit spec reports commands that still hit the fallback, which is the
 backlog for growing fixture fidelity.
 
 **Safety gates.** Mocks install only when (1) the build was made with
-`NEXT_PUBLIC_BROWSER_PREVIEW=1` — only `dev:browser`, `build:preview`, and
-preview CI do this — **and** (2) no real Tauri runtime is present. A Tauri
+`NEXT_PUBLIC_BROWSER_PREVIEW=1` (only `dev:browser`, `build:preview`, and
+preview CI do this) **and** (2) no real Tauri runtime is present. A Tauri
 release build can never be mocked; `npm run tauri:build` is unaffected.
 Seed data is obviously fake; the preview has no model keys and must never
 be given any.
@@ -70,7 +70,7 @@ same-named "Connect GitHub" button).
 
 **Accessibility gate.** `e2e/a11y-baseline.json` pins today's
 critical/serious axe counts per route; the audit fails only on new or
-increased violations. Lower the numbers as debt is fixed — never raise
+increased violations. Lower the numbers as debt is fixed, and never raise
 them silently.
 
 **Visual baselines.** Committed under `e2e/visual.spec.ts-snapshots/`
@@ -103,10 +103,15 @@ them; it is prepended to `LD_LIBRARY_PATH` for the browser process only.
 - `ci.yml` → `test-e2e` job: builds the static bundle, runs the suite
   (minus `@visual`), uploads the Playwright report. Additive (not yet in
   the `ci-success` gate), mirroring the `static-macos` precedent.
-- `preview.yml` (per PR): same run, uploads the deployable `out/` bundle,
-  and — when `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` secrets
-  exist — deploys to Vercel and maintains one sticky preview comment.
-  Without secrets it still succeeds and explains itself in the summary.
+- `preview.yml` (per PR): same run, then uploads the deployable `out/`
+  bundle and the Playwright report as artifacts. It holds no secrets.
+- `preview-deploy.yml`: a trusted `workflow_run` subscriber that GitHub
+  resolves from the default branch. When `VERCEL_TOKEN`, `VERCEL_ORG_ID`
+  and `VERCEL_PROJECT_ID` secrets exist, it deploys the bundle with a
+  fixed static-only config and maintains one sticky preview comment.
+  Without secrets it skips the deploy and the bundle stays downloadable
+  from the build run. It activates only once the file lands on the
+  default branch.
 
 ## Writing new specs
 
