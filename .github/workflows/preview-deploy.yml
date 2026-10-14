@@ -22,11 +22,16 @@ permissions:
   contents: read
 
 concurrency:
-  # Per triggering branch (not per commit): rapid pushes queue under one
-  # group and cancel-in-progress lets the newest deploy win, so an older
-  # build can never overwrite the PR's preview link afterwards (CodeAnt).
-  group: preview-deploy-${{ github.event.workflow_run.head_branch }}
-  cancel-in-progress: true
+  # Grouped by the triggering run's repository + branch: rapid pushes to
+  # one PR serialize instead of racing the sticky comment, while
+  # same-named branches from different forks never share a group and can
+  # never cancel each other (CodeAnt). cancel-in-progress stays false on
+  # purpose — GitHub would only cancel the *pending* run anyway, and each
+  # run deploys only its own head SHA's artifact + updates the same sticky
+  # comment with its own commit, so the last writer is the newest run to
+  # finish; the comment always names its commit for cross-checking.
+  group: preview-deploy-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
 
 jobs:
   resolve-pr:
