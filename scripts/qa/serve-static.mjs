@@ -56,16 +56,16 @@ function resolveFile(urlPath) {
     const direct = join(root, clean);
     // Hard containment: the resolved path must stay inside `out/`.
     if (direct !== root && !direct.startsWith(root + sep)) return null;
-    const candidates = [];
-    if (existsSync(direct) && statSync(direct).isFile()) candidates.push(direct);
-    const asIndex = join(direct, "index.html");
-    if (existsSync(asIndex)) candidates.push(asIndex);
+    const candidates = [direct, join(direct, "index.html")];
     for (const candidate of candidates) {
         // Lexical containment is not enough: a symlink inside `out/` can
-        // point outside it. Compare real paths before serving.
+        // point outside it. Compare real paths before serving. realpath
+        // also absorbs the stat race during a rebuild: a candidate that
+        // vanished (or is not a file) is skipped, never thrown.
         let real;
         try {
             real = realpathSync(candidate);
+            if (!statSync(real).isFile()) continue;
         } catch {
             continue;
         }

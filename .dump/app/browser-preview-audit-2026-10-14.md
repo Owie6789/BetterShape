@@ -235,3 +235,13 @@ to respect:
   enlarging it is a design decision, so `/git` records `target-size: 1`
   in `e2e/a11y-baseline.json` under the file's existing rule that a
   raise needs a reason in the PR.
+
+## Review wave on head 44bf166, 2026-10-15
+
+One CodeAnt thread: `existsSync`/`statSync` in `serve-static.mjs` could
+throw uncaught if a file vanished between the two calls during a
+rebuild. Verified real. The candidate loop now relies on
+`realpathSync` inside the existing try/catch (a vanished candidate is
+skipped), so the exists-then-stat window is gone rather than guarded.
+Verified by serving the rebuilt export after the change: `/` and
+`/git/` return 200, a missing asset returns 404.
