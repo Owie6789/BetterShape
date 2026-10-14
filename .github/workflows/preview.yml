@@ -7,7 +7,8 @@ name: Preview (Browser)
 # Job 1 `preview` (NO secrets, safe for PR-controlled code incl. forks):
 #   build the static preview bundle -> Playwright smoke/audit against it ->
 #   upload the bundle + reports + a staged Vercel Build Output tree.
-# Job 2 `deploy-preview` (secrets live ONLY here, never checks out PR code):
+# Job 2 `deploy-preview` (secrets live ONLY here; checks out nothing but
+#   the trusted base ref, only for the lockfile-pinned CLI manifest):
 #   downloads the staged build output and `vercel deploy --prebuilt`s it,
 #   then posts the sticky PR comment and optional Morph AI QA.
 # Keeping secrets out of the job that executes PR code is deliberate
@@ -103,8 +104,18 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      # No actions/checkout here by design: this job holds the secrets and
-      # must never execute code from the PR head.
+      # This job holds the secrets, so it must never execute PR-head code.
+      # The only checkout is the PR's *base* ref (trusted, not controlled by
+      # the PR author), and only to fetch the lockfile-pinned Vercel CLI
+      # manifest. The deploy itself runs the pinned CLI against the build
+      # artifact produced by the secretless `preview` job.
+      - name: Checkout base ref (trusted tooling only)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          sparse-checkout: .github/vercel-cli
+          sparse-checkout-cone-mode: false
+
       - name: Check Vercel secrets
         id: vercel-check
         env:
@@ -138,10 +149,11 @@ jobs:
           # What `vercel pull` would write; env alone is not honored by
           # every CLI version for --prebuilt deploys.
           printf '{"orgId":"%s","projectId":"%s"}' "$VERCEL_ORG_ID" "$VERCEL_PROJECT_ID" > .vercel/project.json
-          # Pinned CLI, installed locally (version-locked, no install scripts,
-          # never `npx` resolving a floating tag from the registry).
-          npm install --prefix .vercel-cli vercel@64.0.2 --ignore-scripts --no-audit --no-fund
-          URL=$(./.vercel-cli/node_modules/.bin/vercel deploy --prebuilt --token="$VERCEL_TOKEN")
+          # CLI installed from the committed lockfile (.github/vercel-cli,
+          # checked out from the trusted base ref above): every resolved
+          # version is locked — never `npx` or a floating tag near secrets.
+          npm ci --prefix .github/vercel-cli --ignore-scripts --no-audit --no-fund
+          URL=$(./.github/vercel-cli/node_modules/.bin/vercel deploy --prebuilt --token="$VERCEL_TOKEN")
           echo "url=$URL" >> "$GITHUB_OUTPUT"
           echo "Preview deployed: $URL"
 
