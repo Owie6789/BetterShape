@@ -103,13 +103,16 @@ export const PLUGIN_RESULTS: Record<string, unknown> = {
     "plugin:store|length": 0,
     "plugin:dialog|open": null,
     "plugin:dialog|save": null,
+    "plugin:dialog|message": "Ok",
+    "plugin:dialog|confirm": false,
+    "plugin:dialog|ask": false,
     "plugin:notification|is_permission_granted": false,
     "plugin:deep-link|get_current": null,
 };
 
 /**
  * Plugin commands the fallback models deliberately (static results above,
- * the event bus, and the dialog family answering false). Anything else is
+ * the event bus, and the explicit dialog commands). Anything else is
  * reported as unknown so QA audits show the fidelity gaps (CodeAnt).
  */
 export const MODELED_PLUGIN_COMMANDS = [
@@ -214,8 +217,11 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         // ── project / files ──────────────────────────────────────────────
         get_project_state: () => projectState(),
         set_project_path: (args) => {
-            state.projectPath = typeof args.path === "string" ? args.path : null;
-            if (!state.projectPath) {
+            // Backend parity: switching to a *different* project (or none)
+            // closes all tabs on the first workspace change (CodeAnt).
+            const nextPath = typeof args.path === "string" ? args.path : null;
+            if (nextPath !== state.projectPath) {
+                state.projectPath = nextPath;
                 state.openFiles = [];
                 state.activeFile = null;
             }
@@ -255,7 +261,10 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         close_file: (args) => {
             const path = String(args.path ?? "");
             state.openFiles = state.openFiles.filter((f) => f.path !== path);
-            if (state.activeFile === path) state.activeFile = state.openFiles[0]?.path ?? null;
+            // Backend parity: the last remaining file becomes active.
+            if (state.activeFile === path) {
+                state.activeFile = state.openFiles[state.openFiles.length - 1]?.path ?? null;
+            }
             emitProjectState();
             return null;
         },
@@ -390,7 +399,6 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         if (cmd === "plugin:event|listen") return nextEventId++;
         if (cmd in PLUGIN_RESULTS) return PLUGIN_RESULTS[cmd];
         if (cmd.startsWith("plugin:event|")) return null;
-        if (cmd.startsWith("plugin:dialog|")) return false;
         return null;
     }
 
@@ -439,8 +447,7 @@ export const installBrowserPreviewMocks = (): boolean => {
     const seed = resolveSeedMode();
     const { handle, commands } = createPreviewInvokeHandler(seed);
     const known = new Set([...commands, ...MODELED_PLUGIN_COMMANDS]);
-    const isKnownInvoke = (cmd: string): boolean =>
-        known.has(cmd) || cmd.startsWith("plugin:dialog|");
+    const isKnownInvoke = (cmd: string): boolean => known.has(cmd);
     const invokes: PreviewInvokeRecord[] = [];
 
     // Synchronous install: this module is only imported from

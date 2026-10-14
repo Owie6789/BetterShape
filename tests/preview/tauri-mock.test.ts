@@ -75,14 +75,44 @@ describe("plugin fallback modeling (CodeAnt)", () => {
     it("modeled plugin commands are known; unmodeled ones stay visible as fidelity gaps", () => {
         const { handle, commands } = createPreviewInvokeHandler("welcome");
         const known = new Set([...commands, ...MODELED_PLUGIN_COMMANDS]);
-        const isKnownInvoke = (cmd: string): boolean =>
-            known.has(cmd) || cmd.startsWith("plugin:dialog|");
+        const isKnownInvoke = (cmd: string): boolean => known.has(cmd);
         expect(handle("plugin:app|version")).toBe("1.0.3-preview");
         expect(isKnownInvoke("plugin:app|version")).toBe(true);
         expect(isKnownInvoke("plugin:event|listen")).toBe(true);
         expect(isKnownInvoke("plugin:dialog|message")).toBe(true);
+        expect(isKnownInvoke("plugin:dialog|messag")).toBe(false);
         // Not modeled: returns a safe default AND is flagged unknown.
         expect(handle("plugin:opener|open")).toBeNull();
         expect(isKnownInvoke("plugin:opener|open")).toBe(false);
+    });
+});
+
+describe("backend-parity state transitions (CodeAnt)", () => {
+    it("switching projects directly closes the previous project's tabs", () => {
+        const { handle, projectState } = createPreviewInvokeHandler("project");
+        const stateOf = () => projectState() as {
+            project_path: string | null;
+            open_files: Array<{ path: string }>;
+            active_file: string | null;
+        };
+        handle("open_file", { path: "/tmp/other.ts", name: "other.ts" });
+        handle("set_project_path", { path: "/tmp/project-b" });
+        expect(stateOf().project_path).toBe("/tmp/project-b");
+        expect(stateOf().open_files).toEqual([]);
+        expect(stateOf().active_file).toBeNull();
+        handle("set_project_path", {});
+        expect(stateOf().project_path).toBeNull();
+    });
+
+    it("closing the active tab activates the last remaining file (Rust close_file)", () => {
+        const { handle, projectState } = createPreviewInvokeHandler("project");
+        const activeOf = () => (projectState() as { active_file: string | null }).active_file;
+        handle("open_file", { path: "/tmp/a.ts", name: "a.ts" });
+        handle("open_file", { path: "/tmp/b.ts", name: "b.ts" });
+        // active = b.ts (most recently opened); closing it → last remaining
+        handle("close_file", { path: "/tmp/b.ts" });
+        expect(activeOf()).toBe("/tmp/a.ts");
+        handle("close_file", { path: "/tmp/a.ts" });
+        expect(activeOf()).toBe(PREVIEW_PROJECT_PATH + "/README.md");
     });
 });
