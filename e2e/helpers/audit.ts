@@ -20,7 +20,7 @@ export interface RouteAudit {
 }
 
 /** Run axe (WCAG 2.x AA) and return every violation found. */
-export async function runAxeAudit(page: Page) {
+export const runAxeAudit = async (page: Page) => {
     const results = await new AxeBuilder({ page })
         .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
         .analyze();

@@ -33,16 +33,43 @@ const pickStatusFile = (split: SplitState, activeFile: string | null | undefined
     return activeFile ?? null;
 };
 
+const toSlashes = (path: string | null | undefined): string => (path ?? "").replace(/\\/g, "/");
+
 /** Project-relative display path for the status bar (basename fallback). */
 const relativeStatusPath = (statusFile: string | null, projectPath: string | null | undefined): string => {
-    if (!statusFile || !projectPath) return statusFile || "";
-    const normProject = projectPath.replace(/\\/g, "/").replace(/\/$/, "");
-    const normFile = statusFile.replace(/\\/g, "/");
-    if (normFile.toLowerCase().startsWith(`${normProject.toLowerCase()}/`)) {
-        return normFile.slice(normProject.length + 1);
-    }
-    return statusFile.split(/[\\/]/).pop() || statusFile;
+    if (!statusFile) return "";
+    const base = toSlashes(projectPath).replace(/\/$/, "");
+    if (!base) return statusFile;
+    const normFile = toSlashes(statusFile);
+    return normFile.toLowerCase().startsWith(`${base.toLowerCase()}/`)
+        ? normFile.slice(base.length + 1)
+        : statusFile.split(/[\\/]/).pop() || statusFile;
 };
+
+/** Spinning indicator for background progress messages (count badge if >1). */
+const ProgressIndicator = ({ messages, latest }: { messages: string[]; latest: string }) => (
+    <Tooltip content={messages.join("\n")}>
+        <div className="hidden md:flex items-center gap-1.5 px-2 text-text-secondary max-w-[300px] min-w-0 whitespace-nowrap">
+            <Icon icon={ArrowSync20Regular} className="animate-spin shrink-0" />
+            <span className="truncate text-sm font-light">{latest}</span>
+            {messages.length > 1 && (
+                <span className="text-2xs text-text-muted shrink-0">+{messages.length - 1}</span>
+            )}
+        </div>
+    </Tooltip>
+);
+
+/** Center breadcrumb button: reveals the current file in the OS file manager. */
+const StatusFileCrumb = ({ statusFile, relativePath }: { statusFile: string; relativePath: string }) => (
+    <button
+        onClick={() => commands.revealPath(statusFile)}
+        className="pointer-events-auto h-full px-3 flex items-center gap-1.5 text-text-secondary font-light truncate max-w-[60%] cursor-pointer hover:text-text-primary transition-colors"
+        title={statusFile}
+    >
+        <FileIcon name={relativePath.split(/[\\/]/).pop() || relativePath} className="w-3.5 h-3.5 shrink-0" />
+        <span className="truncate">{relativePath}</span>
+    </button>
+);
 
 export default function Status() {
     // Status renders whenever a project is open, but EditorSplitProvider only
@@ -113,34 +140,12 @@ export default function Status() {
                 <GitStatusButton />
 
                 {latestProgressMessage && (
-                    <Tooltip content={progressMessages.join("\n")}>
-                        <div className="hidden md:flex items-center gap-1.5 px-2 text-text-secondary max-w-[300px] min-w-0 whitespace-nowrap">
-                            <Icon icon={ArrowSync20Regular} className="animate-spin shrink-0" />
-                            <span className="truncate text-sm font-light">{latestProgressMessage}</span>
-                            {progressMessages.length > 1 && (
-                                <span className="text-2xs text-text-muted shrink-0">
-                                    +{progressMessages.length - 1}
-                                </span>
-                            )}
-                        </div>
-                    </Tooltip>
+                    <ProgressIndicator messages={progressMessages} latest={latestProgressMessage} />
                 )}
             </div>
 
             <div className="absolute inset-0 z-10 flex items-center justify-center px-2 pointer-events-none">
-                {statusFile && (
-                    <button
-                        onClick={() => commands.revealPath(statusFile)}
-                        className="pointer-events-auto h-full px-3 flex items-center gap-1.5 text-text-secondary font-light truncate max-w-[60%] cursor-pointer hover:text-text-primary transition-colors"
-                        title={statusFile}
-                    >
-                        <FileIcon
-                            name={relativePath.split(/[\\/]/).pop() || relativePath}
-                            className="w-3.5 h-3.5 shrink-0"
-                        />
-                        <span className="truncate">{relativePath}</span>
-                    </button>
-                )}
+                {statusFile && <StatusFileCrumb statusFile={statusFile} relativePath={relativePath} />}
             </div>
 
             <div className="relative z-30 ml-auto flex items-center h-full shrink-0 min-w-0">

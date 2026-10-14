@@ -17,15 +17,15 @@ import {
 } from "@/lib/workspace/repo-history";
 import { cn } from "@/lib/utils";
 
-function parentDir(path: string): string {
+const parentDir = (path: string): string => {
     const normalized = path.replace(/\\/g, "/");
     const idx = normalized.lastIndexOf("/");
     if (idx <= 0) return path;
     const parent = normalized.slice(0, idx);
     return path.includes("\\") ? parent.replace(/\//g, "\\") : parent;
-}
+};
 
-function ActionCard({
+const ActionCard = ({
     icon,
     label,
     onClick,
@@ -35,7 +35,7 @@ function ActionCard({
     label: string;
     onClick: () => void;
     external?: boolean;
-}) {
+}) => {
     return (
         <button
             type="button"
@@ -57,7 +57,7 @@ function ActionCard({
             <span className="text-sm font-medium">{label}</span>
         </button>
     );
-}
+};
 
 const WelcomeActions = ({
     onPickFolder,
@@ -128,7 +128,7 @@ const RecentProjects = ({
     </section>
 );
 
-export function WelcomeScreen({
+export const WelcomeScreen = ({
     recentFolders,
     onOpenProject,
     onPickFolder,
@@ -144,7 +144,7 @@ export function WelcomeScreen({
     onSsh: () => void;
     onConnectGitHub: () => void;
     onSelectChat?: (id: string) => void;
-}) {
+}) => {
     const [showAll, setShowAll] = React.useState(false);
     const visible = showAll ? recentFolders : recentFolders.slice(0, 5);
 
@@ -169,10 +169,10 @@ export function WelcomeScreen({
             </div>
         </div>
     );
-}
+};
 
 /** Load recent folders for the welcome screen (client-only). */
-export function useRecentFolders(): RepoHistoryEntry[] {
+export const useRecentFolders = (): RepoHistoryEntry[] => {
     const [entries, setEntries] = React.useState<RepoHistoryEntry[]>([]);
     React.useEffect(() => {
         setEntries(loadRepoHistory().slice(0, 15));
@@ -181,4 +181,4 @@ export function useRecentFolders(): RepoHistoryEntry[] {
         return () => window.removeEventListener("focus", onFocus);
     }, []);
     return entries;
-}
+};

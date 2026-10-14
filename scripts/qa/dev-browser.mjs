@@ -30,7 +30,7 @@ if (runtime.status !== 0) {
     process.exit(runtime.status ?? 1);
 }
 
-const child = spawn(process.execPath, [nextBin, "dev", "-H", "0.0.0.0", "-p", port], {
+const child = spawn(process.execPath, [nextBin, "dev", "-H", host, "-p", port], {
     stdio: "inherit",
     env,
 });
