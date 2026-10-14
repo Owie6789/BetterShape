@@ -129,10 +129,14 @@ export default defineConfig({
         : {
               command: useStatic ? "npm run preview:browser" : "npm run dev:browser",
               url: baseURL,
-              // Never silently reuse a running server in static mode: a
-              // developer's plain `next dev` on the same port would serve an
-              // unmocked app and the suite would test the wrong thing.
-              reuseExistingServer: !process.env.CI && !useStatic,
+              // Never silently reuse a running server: a developer's plain
+              // `next dev` on this port serves the app WITHOUT the mocked
+              // IPC bridge (no NEXT_PUBLIC_BROWSER_PREVIEW), and the suite
+              // would test the wrong thing (CodeAnt). Opt in explicitly
+              // with E2E_REUSE_SERVER=1 when the server really is
+              // `npm run dev:browser`.
+              reuseExistingServer:
+                  !process.env.CI && !useStatic && process.env.E2E_REUSE_SERVER === "1",
               timeout: 300_000,
           },
 });

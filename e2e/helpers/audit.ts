@@ -82,6 +82,8 @@ export const collectTimings = (page: Page) =>
 /**
  * Deterministic settle: poll until the mock IPC log has been quiet for
  * `quietMs` (post-mount loads done) instead of sleeping a fixed duration.
+ * An empty log is NOT settled (CodeAnt): no IPC yet means post-mount
+ * loads have not even started, so it reports 0 and keeps polling.
  */
 export const waitForIpcQuiet = async (page: Page, quietMs = 300) => {
     await expect
@@ -92,7 +94,7 @@ export const waitForIpcQuiet = async (page: Page, quietMs = 300) => {
                         __BETTERSHAPE_PREVIEW__?: { invokes: Array<{ at: number }> };
                     }).__BETTERSHAPE_PREVIEW__;
                     const last = preview?.invokes[preview.invokes.length - 1];
-                    return last ? Date.now() - last.at : Number.POSITIVE_INFINITY;
+                    return last ? Date.now() - last.at : 0;
                 }),
             { timeout: 10_000 },
         )
