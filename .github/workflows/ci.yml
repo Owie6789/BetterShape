@@ -124,17 +124,17 @@ jobs:
           install-rust: "false"
           install-system-deps: "false"
 
-      - run: npm ci
+      - run: npm ci --ignore-scripts
 
       - name: Build Browser Preview bundle
         run: npm run build:preview
 
       - name: Install Chromium for Playwright
-        run: npx playwright install --with-deps chromium
+        run: ./node_modules/.bin/playwright install --with-deps chromium
 
       - name: Playwright (static bundle)
         # @visual baselines are OS/font-sensitive; they run locally for now.
-        run: npx playwright test --grep-invert @visual
+        run: ./node_modules/.bin/playwright test --grep-invert @visual
         env:
           E2E_STATIC: "1"
 

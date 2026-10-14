@@ -4,13 +4,14 @@ name: Preview (Browser)
 # with a mocked Tauri backend (lib/preview/tauri-mock.ts), so reviewers and
 # agents can click through the change without building the desktop app.
 #
-# What runs everywhere (including forks):
+# Job 1 `preview` (NO secrets, safe for PR-controlled code incl. forks):
 #   build the static preview bundle -> Playwright smoke/audit against it ->
-#   upload the bundle + reports as workflow artifacts.
-# What needs repo secrets (skips cleanly when absent):
-#   VERCEL_TOKEN + VERCEL_ORG_ID + VERCEL_PROJECT_ID -> a live Vercel
-#   preview URL, posted as a sticky PR comment. See
-#   docs/developing/browser-preview.mdx for one-time setup.
+#   upload the bundle + reports + a staged Vercel Build Output tree.
+# Job 2 `deploy-preview` (secrets live ONLY here, never checks out PR code):
+#   downloads the staged build output and `vercel deploy --prebuilt`s it,
+#   then posts the sticky PR comment and optional Morph AI QA.
+# Keeping secrets out of the job that executes PR code is deliberate
+# (CodeAnt): a docs-only PR must never run in the same job as VERCEL_TOKEN.
 # This workflow is deliberately NOT a required status check.
 
 on:
@@ -31,7 +32,6 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
@@ -41,20 +41,29 @@ jobs:
           install-rust: "false"
           install-system-deps: "false"
 
-      - run: npm ci
+      - run: npm ci --ignore-scripts
 
       - name: Build Browser Preview bundle
         run: npm run build:preview
 
       - name: Install Chromium for Playwright
-        run: npx playwright install --with-deps chromium
+        run: ./node_modules/.bin/playwright install --with-deps chromium
 
       - name: Playwright against the static bundle
         # Visual baselines are OS/font-sensitive and stay a local gate for
         # now (see e2e/README.md); everything else runs here.
-        run: npx playwright test --grep-invert @visual
+        run: ./node_modules/.bin/playwright test --grep-invert @visual
         env:
           E2E_STATIC: "1"
+
+      - name: Stage Vercel Build Output API tree
+        # The deploy job uploads this verbatim with `vercel deploy
+        # --prebuilt`, so no repo code (and no build) runs near the token.
+        run: |
+          rm -rf .vercel/output
+          mkdir -p .vercel/output/static
+          cp -R out/. .vercel/output/static/
+          echo '{"version":3}' > .vercel/output/config.json
 
       - name: Upload preview bundle
         if: always()
@@ -76,6 +85,26 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      - name: Upload Vercel build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: vercel-output-${{ github.sha }}
+          path: .vercel/output/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
+
+  deploy-preview:
+    name: Deploy preview to Vercel
+    needs: preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      # No actions/checkout here by design: this job holds the secrets and
+      # must never execute code from the PR head.
       - name: Check Vercel secrets
         id: vercel-check
         env:
@@ -90,6 +119,13 @@ jobs:
             echo "::notice::Vercel secrets not configured — skipping live deploy. The static bundle is in the workflow artifacts; see docs/developing/browser-preview.mdx to enable."
           fi
 
+      - name: Download staged build output
+        if: steps.vercel-check.outputs.enabled == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: vercel-output-${{ github.sha }}
+          path: .vercel/output
+
       - name: Deploy to Vercel (preview)
         id: vercel-deploy
         if: steps.vercel-check.outputs.enabled == 'true'
@@ -99,9 +135,13 @@ jobs:
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
           set -euo pipefail
-          npx --yes vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
-          npx --yes vercel build --token="$VERCEL_TOKEN"
-          URL=$(npx --yes vercel deploy --prebuilt --token="$VERCEL_TOKEN")
+          # What `vercel pull` would write; env alone is not honored by
+          # every CLI version for --prebuilt deploys.
+          printf '{"orgId":"%s","projectId":"%s"}' "$VERCEL_ORG_ID" "$VERCEL_PROJECT_ID" > .vercel/project.json
+          # Pinned CLI, installed locally (version-locked, no install scripts,
+          # never `npx` resolving a floating tag from the registry).
+          npm install --prefix .vercel-cli vercel@64.0.2 --ignore-scripts --no-audit --no-fund
+          URL=$(./.vercel-cli/node_modules/.bin/vercel deploy --prebuilt --token="$VERCEL_TOKEN")
           echo "url=$URL" >> "$GITHUB_OUTPUT"
           echo "Preview deployed: $URL"
 
@@ -124,7 +164,9 @@ jobs:
 
       - name: Morph AI QA of preview deployment
         if: steps.morph-check.outputs.enabled == 'true' && steps.vercel-deploy.outputs.url != ''
-        uses: morphllm/preview-test-action@v1
+        # Pinned to the v2 commit (tags v1/v2 both point here) — never a
+        # floating tag for a third-party action receiving an API key.
+        uses: morphllm/preview-test-action@5db8557c25e42df64548961440a4bc2c41a3705c # v2
         with:
           api-key: ${{ secrets.MORPH_API_KEY }}
           preview-url: ${{ steps.vercel-deploy.outputs.url }}
