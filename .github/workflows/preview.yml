@@ -7,12 +7,18 @@ name: Preview (Browser)
 # Job 1 `preview` (NO secrets, safe for PR-controlled code incl. forks):
 #   build the static preview bundle -> Playwright smoke/audit against it ->
 #   upload the bundle + reports + a staged Vercel Build Output tree.
-# Job 2 `deploy-preview` (secrets live ONLY here; checks out nothing but
-#   the trusted base ref, only for the lockfile-pinned CLI manifest):
-#   downloads the staged build output and `vercel deploy --prebuilt`s it,
-#   then posts the sticky PR comment and optional Morph AI QA.
-# Keeping secrets out of the job that executes PR code is deliberate
-# (CodeAnt): a docs-only PR must never run in the same job as VERCEL_TOKEN.
+# Job 2 `deploy-preview` (secrets live ONLY here): downloads the staged
+#   build output and `vercel deploy --prebuilt`s it, posts the sticky PR
+#   comment, and runs optional Morph AI QA.
+# Keeping secrets out of the job that executes PR code is deliberate: a
+# docs-only PR must never run in the same job as VERCEL_TOKEN.
+# NOTE (accepted limitation): the deploy job's STEPS are defined by this
+# workflow file, which GitHub resolves from the PR merge revision — so a
+# same-repository PR that edits this file could in principle touch the
+# secret-bearing steps (fork PRs get no secrets at all). The full fix is a
+# separate trusted deployment workflow fed by `workflow_run`; until then,
+# treat any diff to .github/workflows/preview.yml as security-sensitive
+# and require maintainer review before merging it (CodeAnt).
 # This workflow is deliberately NOT a required status check.
 
 on:
