@@ -111,6 +111,22 @@ describe("file mutations", () => {
         expect(state.active_file).toBe(`${PREVIEW_PROJECT_PATH}/GUIDE.md`);
     });
 
+    it("renaming a directory retargets tabs on its descendants", () => {
+        const { handle, projectState } = createPreviewInvokeHandler("project");
+        handle("open_file", { path: `${PREVIEW_PROJECT_PATH}/src/App.tsx`, name: "App.tsx" });
+        handle("rename_path", {
+            oldPath: `${PREVIEW_PROJECT_PATH}/src`,
+            newPath: `${PREVIEW_PROJECT_PATH}/app`,
+        });
+        const state = projectState() as {
+            open_files: Array<{ path: string }>;
+            active_file: string | null;
+        };
+        expect(state.open_files.map((f) => f.path)).toContain(`${PREVIEW_PROJECT_PATH}/app/App.tsx`);
+        expect(state.active_file).toBe(`${PREVIEW_PROJECT_PATH}/app/App.tsx`);
+        expect(handle("read_file", { path: `${PREVIEW_PROJECT_PATH}/app/App.tsx` })).toContain("preview fixture");
+    });
+
     it("copy_path duplicates content and keeps the original", () => {
         const { handle } = createPreviewInvokeHandler("project");
         handle("copy_path", {

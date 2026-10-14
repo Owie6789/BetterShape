@@ -16,11 +16,19 @@ test.describe("@smoke routes boot", () => {
             await gotoRoute(page, route.path);
             await expectPreviewActive(page, seedMode);
 
-            // Route shells from app/client-layout.tsx.
-            const shell = page.locator(
-                "#bettershape-workbench, #bettershape-settings, #bettershape-popout",
-            );
-            await expect(shell.first()).toBeVisible();
+            // Route-specific shells from app/client-layout.tsx. An
+            // any-of selector would pass if the wrong surface rendered,
+            // so each route must show its own shell.
+            // client-layout: /git and /branch are secondary windows and
+            // render the settings shell, not the workbench shell.
+            const shellByName: Record<string, string> = {
+                welcome: "#bettershape-workbench",
+                git: "#bettershape-settings",
+                branch: "#bettershape-settings",
+                settings: "#bettershape-settings",
+                popout: "#bettershape-popout",
+            };
+            await expect(page.locator(shellByName[route.name])).toBeVisible();
 
             expectNoPageErrors();
         });

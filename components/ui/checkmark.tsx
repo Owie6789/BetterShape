@@ -14,10 +14,12 @@ export interface CheckmarkProps {
     onCheckedChange?: (checked: boolean | "indeterminate") => void;
     className?: string;
     disabled?: boolean;
+    /** Accessible name for the checkbox (axe aria-toggle-field-name). */
+    label?: string;
 }
 
 export const Checkmark = React.forwardRef<HTMLDivElement, CheckmarkProps>(
-    ({ className, checked, onCheckedChange, disabled, ...props }, ref) => {
+    ({ className, checked, onCheckedChange, disabled, label, ...props }, ref) => {
         const toggle = () => {
             if (disabled) return;
             const nextChecked = checked === true ? false : true;
@@ -33,6 +35,7 @@ export const Checkmark = React.forwardRef<HTMLDivElement, CheckmarkProps>(
             <div
                 ref={ref}
                 role="checkbox"
+                aria-label={label ?? "Checkbox"}
                 aria-checked={checked === "indeterminate" ? "mixed" : checked}
                 tabIndex={disabled ? -1 : 0}
                 onClick={handleClick}

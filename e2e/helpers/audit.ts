@@ -84,6 +84,9 @@ export const collectTimings = (page: Page) =>
  * `quietMs` (post-mount loads done) instead of sleeping a fixed duration.
  * An empty log is NOT settled: no IPC yet means post-mount
  * loads have not even started, so it reports 0 and keeps polling.
+ * IPC quiet alone is not sufficient for routes whose content mount is
+ * time-gated (the Git manager plays a ~1.65s intro before mounting):
+ * callers add a route-content wait after this one.
  */
 export const waitForIpcQuiet = async (page: Page, quietMs = 300) => {
     await expect

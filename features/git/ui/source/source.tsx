@@ -132,6 +132,7 @@ function ChangeRow({
                         <Checkmark
                             checked={file.staged}
                             onCheckedChange={() => void handleToggleState()}
+                            label={file.staged ? `Unstage ${file.path}` : `Stage ${file.path}`}
                         />
                     </div>
                     <div className="w-4 mr-1.5 flex justify-center shrink-0 pointer-events-none">
@@ -251,6 +252,7 @@ function ChangeSection({
                     <Checkmark
                         checked={isAllStaged ? true : isSomeStaged ? "indeterminate" : false}
                         onCheckedChange={onToggleStage}
+                        label={isAllStaged ? `Unstage all in ${title}` : `Stage all in ${title}`}
                     />
                 </div>
                 <span className="text-sm font-normal text-text-secondary group-hover:text-text-primary transition-colors">

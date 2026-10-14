@@ -132,6 +132,28 @@ jobs:
             echo "::notice::Vercel secrets not configured, skipping live deploy. The static bundle is in the Preview (Browser) workflow artifacts; see docs/developing/browser-preview.mdx to enable."
           fi
 
+      - name: Re-resolve PR head before deploying
+        if: steps.vercel-check.outputs.enabled == 'true'
+        uses: actions/github-script@v7
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          PR_NUMBER: ${{ needs.resolve-pr.outputs.pr-number }}
+        with:
+          script: |
+            // The resolver compared the head minutes ago. Re-check it
+            // now so the window where a newer run can still overwrite
+            // this one shrinks to the deploy itself; the concurrency
+            // group already serializes runs per branch.
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: parseInt(process.env.PR_NUMBER, 10),
+            });
+            if (pr.head.sha !== process.env.HEAD_SHA) {
+              core.notice(`PR #${pr.number} head advanced past ${process.env.HEAD_SHA}; standing down.`);
+              process.exit(0);
+            }
+
       - name: Download static bundle
         if: steps.vercel-check.outputs.enabled == 'true'
         uses: actions/download-artifact@v4

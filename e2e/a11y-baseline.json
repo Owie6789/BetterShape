@@ -5,5 +5,8 @@
     },
     "/settings": {
         "button-name": 38
+    },
+    "/git": {
+        "target-size": 1
     }
 }

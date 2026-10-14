@@ -29,42 +29,71 @@ const a11yBaseline = JSON.parse(
 test.describe("@audit route crawl", () => {
     const audits: RouteAudit[] = [];
 
-    for (const route of ROUTES) {
-        test(`audit ${route.name} (${route.path})`, async ({
-            page,
-            seedMode,
-            pageErrors,
-            consoleErrors,
-        }, testInfo) => {
-            await gotoRoute(page, route.path);
-            await expectPreviewActive(page, seedMode);
-            // Let post-mount effects (settings, git, chat loads) settle:
-            // wait for a quiet IPC window rather than a fixed sleep.
+    const auditRoute = async (
+        route: (typeof ROUTES)[number],
+        fixtures: {
+            page: import("@playwright/test").Page;
+            seedMode: "welcome" | "project";
+            pageErrors: string[];
+            consoleErrors: string[];
+        },
+        testInfo: import("@playwright/test").TestInfo,
+    ) => {
+        const { page, seedMode, pageErrors, consoleErrors } = fixtures;
+        await gotoRoute(page, route.path);
+        await expectPreviewActive(page, seedMode);
+        // Let post-mount effects (settings, git, chat loads) settle:
+        // wait for a quiet IPC window rather than a fixed sleep.
+        await waitForIpcQuiet(page);
+        // IPC quiet can precede time-gated content mounts (the Git
+        // manager plays a ~1.65s intro). Wait for route content, not
+        // just transport silence, so axe and the screenshot see the
+        // real UI instead of a splash.
+        if (route.name === "git" || route.name === "branch") {
+            const seeded = route.name === "branch" ? "preview/browser-qa" : "preview: seeded commit history";
+            await expect(page.getByText(seeded).first()).toBeVisible({ timeout: 30_000 });
             await waitForIpcQuiet(page);
+        }
 
-            const violations = await runAxeAudit(page);
-            assertA11yWithinBaseline(violations, route.path, a11yBaseline);
-            await captureRoute(page, testInfo, route.name);
+        const violations = await runAxeAudit(page);
+        assertA11yWithinBaseline(violations, route.path, a11yBaseline);
+        await captureRoute(page, testInfo, route.name);
 
-            const ipc = await collectIpcInventory(page);
-            audits.push({
-                route: route.path,
-                title: await page.title(),
-                axeViolations: violations.map((v) => ({
-                    id: v.id,
-                    impact: v.impact ?? null,
-                    nodes: v.nodes.length,
-                })),
-                consoleErrors: [...consoleErrors],
-                pageErrors: [...pageErrors],
-                unknownIpcCommands: ipc.unknown,
-                ipcCommandCount: ipc.count,
-                timings: await collectTimings(page),
-            });
+        const ipc = await collectIpcInventory(page);
+        audits.push({
+            route: route.path,
+            title: await page.title(),
+            axeViolations: violations.map((v) => ({
+                id: v.id,
+                impact: v.impact ?? null,
+                nodes: v.nodes.length,
+            })),
+            consoleErrors: [...consoleErrors],
+            pageErrors: [...pageErrors],
+            unknownIpcCommands: ipc.unknown,
+            ipcCommandCount: ipc.count,
+            timings: await collectTimings(page),
+        });
 
-            expect(pageErrors, `${route.name}: uncaught page errors`).toEqual([]);
+        expect(pageErrors, `${route.name}: uncaught page errors`).toEqual([]);
+    };
+
+    for (const route of ROUTES.filter((r) => r.name !== "git" && r.name !== "branch")) {
+        test(`audit ${route.name} (${route.path})`, async ({ page, seedMode, pageErrors, consoleErrors }, testInfo) => {
+            await auditRoute(route, { page, seedMode, pageErrors, consoleErrors }, testInfo);
         });
     }
+
+    // The Git windows need the seeded repo open; the welcome seed leaves
+    // them on an empty state that is not worth auditing.
+    test.describe("seeded repo routes", () => {
+        test.use({ seedMode: "project" });
+        for (const route of ROUTES.filter((r) => r.name === "git" || r.name === "branch")) {
+            test(`audit ${route.name} (${route.path})`, async ({ page, seedMode, pageErrors, consoleErrors }, testInfo) => {
+                await auditRoute(route, { page, seedMode, pageErrors, consoleErrors }, testInfo);
+            });
+        }
+    });
 
     // Playwright requires a destructured fixtures arg even when the hook
     // only needs testInfo; `browser` is worker-scoped so it is legal (and

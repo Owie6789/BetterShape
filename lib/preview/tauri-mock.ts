@@ -292,16 +292,23 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         for (const [path, entries] of movedDirs) state.dirs[path] = entries;
         addDirEntry(newPath, isDir);
         if (!copy) {
-            // An open tab follows its file across a rename.
+            // Open tabs follow a rename, including tabs on descendants
+            // when a directory moved above them.
             let tabsMoved = false;
             for (const open of state.openFiles) {
                 if (open.path === oldPath) {
                     open.path = newPath;
                     open.name = fileNameOf(newPath);
                     tabsMoved = true;
+                } else if (open.path.startsWith(`${oldPath}/`)) {
+                    open.path = `${newPath}${open.path.slice(oldPath.length)}`;
+                    tabsMoved = true;
                 }
             }
             if (state.activeFile === oldPath) state.activeFile = newPath;
+            else if (state.activeFile?.startsWith(`${oldPath}/`)) {
+                state.activeFile = `${newPath}${state.activeFile.slice(oldPath.length)}`;
+            }
             if (tabsMoved) emitProjectState();
         }
     };

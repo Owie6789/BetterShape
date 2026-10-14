@@ -208,3 +208,30 @@ Three CodeAnt threads, all verified real and fixed:
 
 Full local suite after these fixes: Playwright 25 of 25 including the
 visual baselines, Vitest 857 of 857, `tsc` clean, ESLint 0 errors.
+
+## Review wave on head c74a267, 2026-10-15
+
+Four CodeAnt threads. Three were straightforwardly real (older-deploy
+re-check window, IPC-quiet preceding the Git manager's 1.65s intro
+mount, directory rename leaving descendant tabs behind), and the fourth
+(smoke specs accepting any route shell) uncovered two facts the fix had
+to respect:
+
+- Smoke specs: each route now asserts its own shell. Writing the route
+  map required reading `app/client-layout.tsx`: `/git` and `/branch`
+  are secondary windows and render `#bettershape-settings`, not the
+  workbench shell. The first run of the stricter map failed on exactly
+  that assumption, which is the stricter test working as intended.
+- Audit settle: the git routes moved into a project-seeded describe
+  (the welcome seed leaves the Git manager on an empty state), and the
+  audit waits for seeded content after IPC quiet before running axe.
+  Scanning the populated Git UI then surfaced pre-existing violations
+  the splash had hidden: `aria-toggle-field-name` on four staging
+  checkboxes and one `target-size` node. The checkboxes are the shared
+  `components/ui/checkmark.tsx` primitive rendered without an accessible
+  name; it now takes a `label` prop defaulting to "Checkbox", and the
+  Git source passes "Stage/Unstage <path>" and "Stage all in <title>".
+  The remaining target-size node sits inside a 20px row affordance;
+  enlarging it is a design decision, so `/git` records `target-size: 1`
+  in `e2e/a11y-baseline.json` under the file's existing rule that a
+  raise needs a reason in the PR.
