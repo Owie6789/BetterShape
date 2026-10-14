@@ -78,6 +78,49 @@ available as an artifact — forks need no configuration.
 Any static host can serve the same `out/` directory (GitHub Pages,
 Netlify, Cloudflare Pages); Vercel is not required.
 
+Two connection styles — pick one, or you will get duplicate deployments:
+
+- **Vercel GitHub App (simplest):** import the repo at
+  [vercel.com/new](https://vercel.com/new). Installing the **Vercel**
+  GitHub App connects the repo; `vercel.json` supplies the build, every
+  PR gets a preview deployment and Vercel's own PR comment, and no
+  GitHub secrets are needed. In this mode do not add the `VERCEL_*`
+  secrets below (the workflow deploy step stays skipped; the Playwright
+  gate and artifacts still run).
+- **GitHub Actions deploy:** add `VERCEL_TOKEN` (Vercel → Settings →
+  Tokens), `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID` (the last two are in
+  `.vercel/project.json` after `npx vercel link`) as repository secrets.
+  `preview.yml` then deploys itself and maintains a sticky comment with
+  the URL.
+
+Do not add real model keys to Vercel Preview environment variables: the
+preview build is self-contained and fake-data only.
+
+## AI QA of previews (Morph, optional)
+
+[Morph](https://morphllm.com) is a GitHub App ("Morph Subagents") that
+watches each PR's preview deployment, clicks through the UI the diff
+touched in a real browser, and posts a video plus results on the PR.
+It complements the deterministic Playwright gate — exploratory AI QA on
+top, never instead of it. Free to try.
+
+1. Install the app from
+   [morphllm.com/dashboard/integrations/github](https://morphllm.com/dashboard/integrations/github)
+   and select this repository.
+2. In the same dashboard, **Connect Vercel** so Morph can reach previews
+   behind Vercel Deployment Protection (Pro/Enterprise) — bypass secrets
+   are populated automatically. On Hobby plans previews are public and
+   this is a no-op.
+3. Optional: set path filters (for example only test PRs touching
+   `app/`, `features/`, or `components/`) or require its check run
+   before merge, in the integrations dashboard.
+4. No login setup is needed: the preview uses fake data with no auth.
+
+If you use the GitHub Actions deploy style instead of the Vercel GitHub
+App, also add a `MORPH_API_KEY` repository secret: `preview.yml` already
+contains a gated Morph step that runs against the deployed URL and
+skips cleanly when the secret is absent.
+
 <Warning>
 Preview deployments are public URLs containing the full UI with fake
 data. Never add real model keys or secrets to a preview build, and do

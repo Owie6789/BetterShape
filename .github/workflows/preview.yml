@@ -105,6 +105,38 @@ jobs:
           echo "url=$URL" >> "$GITHUB_OUTPUT"
           echo "Preview deployed: $URL"
 
+      # Optional AI QA of the deployed preview (Morph). Skips unless the
+      # MORPH_API_KEY secret exists; also requires the Morph GitHub App
+      # ("Morph Subagents") installed on the repo. Morph explores the UI
+      # this PR changed and posts a video + results on the PR. This is
+      # exploratory QA on top of the deterministic Playwright gate above,
+      # never a replacement for it. Setup: docs/developing/browser-preview.mdx
+      - name: Check Morph secret
+        id: morph-check
+        env:
+          MORPH_API_KEY: ${{ secrets.MORPH_API_KEY }}
+        run: |
+          if [ -n "$MORPH_API_KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Morph AI QA of preview deployment
+        if: steps.morph-check.outputs.enabled == 'true' && steps.vercel-deploy.outputs.url != ''
+        uses: morphllm/preview-test-action@v1
+        with:
+          api-key: ${{ secrets.MORPH_API_KEY }}
+          preview-url: ${{ steps.vercel-deploy.outputs.url }}
+          instructions: |
+            This is BetterShape, a desktop-agent workbench running with a
+            mocked backend and fake data (no login, no real API keys).
+            Exercise the screens this PR changed. Also try: the welcome
+            screen's four actions (/?seed=welcome), the workbench with a
+            project open (/?seed=project), Settings section navigation
+            (/settings), and the Git manager (/git). Flag anything
+            unclickable, overlapping, blank, or silently broken.
+
       - name: Comment preview link on PR
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false
         uses: actions/github-script@v7
@@ -121,7 +153,7 @@ jobs:
               "",
               url
                 ? `**Live preview:** ${url}`
-                : "_No live URL (Vercel not configured) — download the `browser-preview` artifact from the workflow run and serve `out/` locally, or run `npm run dev:browser`._",
+                : "_No live URL from this workflow._ If the Vercel GitHub App is connected to this repo, it posts its own preview link on this PR. Otherwise download the `browser-preview` artifact from the workflow run and serve `out/` locally, or run `npm run dev:browser`.",
               "",
               "The full UI runs in your browser with a mocked Tauri backend (fake project, files, Git, chats — no real data, no model keys). Seed the open-project state by adding `?seed=project` to the URL.",
               "",
