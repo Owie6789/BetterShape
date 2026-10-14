@@ -63,8 +63,10 @@ against it, and uploads the bundle plus reports as workflow artifacts.
 That workflow is secretless by design. Deployment runs in
 `.github/workflows/preview-deploy.yml`, a `workflow_run` subscriber that
 GitHub resolves from the default branch: the deploy steps can never be
-modified by a PR, and the only PR-controlled input is the staged build
-artifact (uploaded verbatim, never executed). Secrets
+modified by a PR, and the only PR-controlled input is the static bundle
+artifact. The deployer re-stages the Vercel Build Output tree itself with
+a fixed static-only config (no functions, no PR-supplied routes) and
+uploads that verbatim — artifact content is never executed. Secrets
 (`VERCEL_TOKEN`, `MORPH_API_KEY`) exist only there.
 
 To also get a live URL, configure three repository secrets once:

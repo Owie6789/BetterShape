@@ -177,7 +177,11 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
             : [] as Array<{ path: string; name: string; is_dirty: boolean; is_pinned?: boolean }>,
         activeFile: seed === "project" ? `${PREVIEW_PROJECT_PATH}/README.md` : null as string | null,
         files: { ...PREVIEW_FILES },
+        dirs: Object.fromEntries(
+            Object.entries(PREVIEW_DIRS).map(([k, v]) => [k, v.map((e) => ({ ...e }))]),
+        ) as typeof PREVIEW_DIRS,
         branch: "main",
+        branches: ["main", "preview/browser-qa"],
     };
     const listeners = new Map<string, Set<number>>();
     // `listen` records the callback id but returns a separate subscription
@@ -202,8 +206,10 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         ids.forEach((id) => {
             try {
                 internals.runCallback(id, { event, id: nextEventId, payload });
-            } catch {
-                /* listener gone — ignore */
+            } catch (err) {
+                // Surface listener failures: silently swallowing them lets
+                // QA pass while the UI missed a state update (Sourcery).
+                console.error(`[preview] listener for "${event}" threw`, err);
             }
         });
     }
@@ -214,6 +220,15 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
     const ensureOpenFile = (path: string, name: string) => {
         if (state.openFiles.some((f) => f.path === path)) return;
         state.openFiles.push({ path, name, is_dirty: false });
+    };
+
+    /** Register a created path in its parent directory listing. */
+    const addDirEntry = (path: string, isDir: boolean) => {
+        const parent = path.slice(0, path.lastIndexOf("/")) || "/";
+        const entries = state.dirs[parent];
+        if (!entries) return;
+        const name = fileNameOf(path);
+        if (!entries.some((e) => e.name === name)) entries.push({ name, is_dir: isDir });
     };
 
     const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
@@ -239,7 +254,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         home_dir: () => "/preview/home",
         ls_dir: (args) => {
             const path = String(args.path ?? "");
-            const entries = PREVIEW_DIRS[path] ?? [];
+            const entries = state.dirs[path] ?? [];
             return entries.map((e) => ({ name: e.name, path: `${path}/${e.name}`, is_dir: e.is_dir }));
         },
         read_file: (args) => state.files[String(args.path ?? "")] ?? "# Preview fixture\n\nNo seeded content for this path.\n",
@@ -248,6 +263,10 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         save_file: (args) => {
             if (typeof args.path === "string" && typeof args.content === "string") {
                 state.files[args.path] = args.content;
+                // Saving clears the tab's dirty flag, like the backend.
+                const open = state.openFiles.find((f) => f.path === args.path);
+                if (open) open.is_dirty = false;
+                emitProjectState();
             }
             return null;
         },
@@ -283,12 +302,33 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
             return null;
         },
         pin_file: () => null,
-        mark_file_dirty: () => null,
+        mark_file_dirty: (args) => {
+            const open = state.openFiles.find((f) => f.path === String(args.path ?? ""));
+            if (open) {
+                open.is_dirty = args.dirty === true;
+                emitProjectState();
+            }
+            return null;
+        },
         reorder_files: () => null,
         close_to_right: () => null,
         close_saved: () => null,
-        create_file: () => null,
-        create_dir: () => null,
+        create_file: (args) => {
+            const path = String(args.path ?? "");
+            if (path) {
+                state.files[path] ??= "";
+                addDirEntry(path, false);
+            }
+            return null;
+        },
+        create_dir: (args) => {
+            const path = String(args.path ?? "");
+            if (path) {
+                state.dirs[path] ??= [];
+                addDirEntry(path, true);
+            }
+            return null;
+        },
         delete_path: () => null,
         trash_path: () => null,
         rename_path: () => null,
@@ -306,12 +346,29 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
             { path: "src/App.tsx", status: "modified", staged: false },
             { path: "README.md", status: "modified", staged: true },
         ],
-        git_branches: () => ["main", "preview/browser-qa"],
+        git_branches: () => [...state.branches],
         git_current_branch: () => state.branch,
-        git_branch_details: () => [
-            { name: "main", author: "Preview Fixture", authorEmail: "preview@example.invalid", date: new Date().toISOString(), ahead: 0, behind: 0 },
-            { name: "preview/browser-qa", author: "Preview Fixture", authorEmail: "preview@example.invalid", date: new Date().toISOString(), ahead: 1, behind: 0 },
-        ],
+        git_create_branch: (args) => {
+            const name = String(args.branchName ?? "");
+            if (name && !state.branches.includes(name)) state.branches.push(name);
+            return null;
+        },
+        git_switch_branch: (args) => {
+            const name = String(args.branchName ?? "");
+            if (name) {
+                if (!state.branches.includes(name)) state.branches.push(name);
+                state.branch = name;
+            }
+            return null;
+        },
+        git_branch_details: () => state.branches.map((name, i) => ({
+            name,
+            author: "Preview Fixture",
+            authorEmail: "preview@example.invalid",
+            date: new Date().toISOString(),
+            ahead: i,
+            behind: 0,
+        })),
         git_remote_branches: () => [],
         git_list_remotes: () => [],
         git_has_remote: () => false,
@@ -326,7 +383,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
                 name: "main", commit: "preview000300000000000000000000000000", author: "Preview Fixture",
                 date: new Date().toISOString(), ahead: 0, x: 0, y: 0, parents: [], isCurrent: true, isRemote: false,
             }],
-            width: 1, height: 1, currentBranch: "main", total: 1, truncated: false,
+            width: 1, height: 1, currentBranch: state.branch, total: 1, truncated: false,
         }),
         git_diff: () => "diff --git a/src/App.tsx b/src/App.tsx\n+// preview fixture change\n",
         git_file_diff: () => "diff --git a/src/App.tsx b/src/App.tsx\n+// preview fixture change\n",
@@ -337,7 +394,12 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         git_activity_timeline: () => [],
 
         // ── chat / AI ────────────────────────────────────────────────────
-        get_conversations: () => [{
+        get_conversations: (args) => {
+            // Backend parity: a query for another project must not leak
+            // this project's seeded conversation (Sourcery).
+            const requested = args.projectPath;
+            if (typeof requested === "string" && requested !== PREVIEW_PROJECT_PATH) return [];
+            return [{
             id: "preview-conversation",
             title: "Preview fixture chat",
             project_path: PREVIEW_PROJECT_PATH,
@@ -346,7 +408,8 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
                 { role: "user", content: "What does this fixture do?", timestamp: Date.now() - 60_000 },
                 { role: "assistant", content: "It seeds a deterministic project so the workbench can be audited in a browser.", timestamp: Date.now() - 59_000 },
             ],
-        }],
+            }];
+        },
         get_conversation_messages: () => [
             { role: "user", content: "What does this fixture do?", timestamp: Date.now() - 60_000 },
             { role: "assistant", content: "It seeds a deterministic project so the workbench can be audited in a browser.", timestamp: Date.now() - 59_000 },
@@ -391,7 +454,13 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         browser_tabs: () => ({ tabs: [], activeId: null }),
         browser_history: () => [],
         pty_available_shells: () => [],
-        get_package_info: () => null,
+        // PackageInfo contract: dependencies arrays must exist (CodeAnt).
+        get_package_info: () => ({
+            name: "bettershape-demo",
+            version: "0.0.0-preview",
+            dependencies: [],
+            dev_dependencies: [],
+        }),
         get_outline: () => null,
     };
 
@@ -404,10 +473,9 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
     }
 
     function pluginFallback(cmd: string, args: Record<string, unknown>): unknown {
-        // Event plugin: listeners are tracked in `trackListener` so the
-        // `emit()` helper above can deliver to them; emit must go through
-        // the tracked listeners (CodeAnt).
-        if (cmd === "plugin:event|listen") return nextEventId++;
+        // Event plugin: `listen` never reaches here — handle() returns the
+        // tracked subscription id first. `emit` goes through the tracked
+        // listeners so delivery matches listen/unlisten bookkeeping.
         if (cmd === "plugin:event|emit") return handleEventEmit(args);
         if (cmd in PLUGIN_RESULTS) return PLUGIN_RESULTS[cmd];
         if (cmd.startsWith("plugin:event|")) return null;
@@ -442,13 +510,16 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
             // Real client sends { event, eventId } where eventId is the
             // subscription id returned by listen — translate it back to the
             // callback id; accept other numeric spellings too.
-            for (const key of ["eventId", "handler", "id", "event_id"]) {
-                const value = (args as Record<string, unknown>)[key];
-                if (typeof value !== "number") continue;
+            const ids = new Set(
+                ["eventId", "handler", "id", "event_id"]
+                    .map((key) => (args as Record<string, unknown>)[key])
+                    .filter((v): v is number => typeof v === "number"),
+            );
+            ids.forEach((value) => {
                 const callbackId = subscriptionCallbacks.get(value) ?? value;
                 subscriptionCallbacks.delete(value);
-                listeners.get(args.event)?.delete(callbackId);
-            }
+                listeners.get(args.event as string)?.delete(callbackId);
+            });
         }
         return undefined;
     }

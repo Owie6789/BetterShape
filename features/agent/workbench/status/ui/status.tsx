@@ -35,13 +35,17 @@ const pickStatusFile = (split: SplitState, activeFile: string | null | undefined
 
 const toSlashes = (path: string | null | undefined): string => (path ?? "").replace(/\\/g, "/");
 
+/** True when `file` (normalised) lives directly under `base`. */
+const isUnderBase = (file: string, base: string): boolean =>
+    file.toLowerCase().startsWith(`${base.toLowerCase()}/`);
+
 /** Project-relative display path for the status bar (basename fallback). */
 const relativeStatusPath = (statusFile: string | null, projectPath: string | null | undefined): string => {
     if (!statusFile) return "";
     const base = toSlashes(projectPath).replace(/\/$/, "");
     if (!base) return statusFile;
     const normFile = toSlashes(statusFile);
-    return normFile.toLowerCase().startsWith(`${base.toLowerCase()}/`)
+    return isUnderBase(normFile, base)
         ? normFile.slice(base.length + 1)
         : statusFile.split(/[\\/]/).pop() || statusFile;
 };

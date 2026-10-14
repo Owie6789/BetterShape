@@ -150,3 +150,48 @@ describe("event delivery (CodeAnt)", () => {
         }
     });
 });
+
+describe("mock fidelity (Sourcery/CodeAnt threads)", () => {
+    it("dirty flag follows mark_file_dirty and clears on save_file", () => {
+        const { handle, projectState } = createPreviewInvokeHandler("project");
+        const readme = `${PREVIEW_PROJECT_PATH}/README.md`;
+        const dirtyOf = () =>
+            (projectState() as { open_files: Array<{ path: string; is_dirty: boolean }> })
+                .open_files.find((f) => f.path === readme)?.is_dirty;
+        handle("mark_file_dirty", { path: readme, dirty: true });
+        expect(dirtyOf()).toBe(true);
+        handle("save_file", { path: readme, content: "# saved\n" });
+        expect(dirtyOf()).toBe(false);
+        expect(handle("read_file", { path: readme })).toBe("# saved\n");
+    });
+
+    it("created files and folders appear in directory listings", () => {
+        const { handle } = createPreviewInvokeHandler("project");
+        handle("create_dir", { path: `${PREVIEW_PROJECT_PATH}/docs` });
+        handle("create_file", { path: `${PREVIEW_PROJECT_PATH}/docs/guide.md` });
+        const root = handle("ls_dir", { path: PREVIEW_PROJECT_PATH }) as Array<{ name: string; is_dir: boolean }>;
+        expect(root.map((e) => [e.name, e.is_dir])).toContainEqual(["docs", true]);
+        const docs = handle("ls_dir", { path: `${PREVIEW_PROJECT_PATH}/docs` }) as Array<{ name: string }>;
+        expect(docs.map((e) => e.name)).toContain("guide.md");
+    });
+
+    it("branch create/switch updates branch state", () => {
+        const { handle } = createPreviewInvokeHandler("project");
+        handle("git_create_branch", { repoPath: PREVIEW_PROJECT_PATH, branchName: "feature/qa" });
+        expect(handle("git_branches")).toContain("feature/qa");
+        handle("git_switch_branch", { repoPath: PREVIEW_PROJECT_PATH, branchName: "feature/qa" });
+        expect(handle("git_current_branch")).toBe("feature/qa");
+    });
+
+    it("conversations are filtered by requested project; package info honours its contract", () => {
+        const { handle } = createPreviewInvokeHandler("project");
+        expect(handle("get_conversations", { projectPath: "/someone/else" })).toEqual([]);
+        expect(handle("get_conversations", { projectPath: PREVIEW_PROJECT_PATH })).toHaveLength(1);
+        const info = handle("get_package_info", { projectPath: PREVIEW_PROJECT_PATH }) as {
+            dependencies: unknown[];
+            dev_dependencies: unknown[];
+        };
+        expect(info.dependencies).toEqual([]);
+        expect(info.dev_dependencies).toEqual([]);
+    });
+});

@@ -45,6 +45,8 @@ test.describe("workbench (seeded project)", () => {
                 }),
             )
             .toBe(true);
+        // ...and the returned content is actually rendered, not swallowed.
+        await expect(page.getByText("Hello from the preview fixture").first()).toBeVisible();
         expectNoPageErrors();
     });
 

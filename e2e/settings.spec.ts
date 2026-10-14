@@ -19,9 +19,11 @@ test.describe("settings", () => {
     });
 
     test("switching sections changes the visible panel", async ({ page, expectNoPageErrors }) => {
-        await page.getByText("Providers", { exact: true }).first().click();
-        // Providers section: bring-your-own-key copy / provider list area.
-        await expect(page.locator("#bettershape-settings main")).not.toBeEmpty();
+        // Start on the default Providers panel, then switch to Editor: the
+        // Editor panel's switch controls must appear (a no-op navigation
+        // would leave the Providers panel in place and fail this).
+        await page.getByText("Editor", { exact: true }).first().click();
+        await expect(page.getByRole("switch").first()).toBeVisible();
         expectNoPageErrors();
     });
 

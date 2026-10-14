@@ -6,8 +6,9 @@ name: Preview (Browser)
 #
 # This workflow holds NO secrets and is safe to define from PR-controlled
 # revisions: it builds the static preview bundle, runs Playwright
-# smoke/audit against it, and uploads the bundle + reports + a staged
-# Vercel Build Output tree as artifacts.
+# smoke/audit against it, and uploads the bundle + reports as artifacts.
+# Artifact names carry the PR head SHA so the trusted deploy workflow
+# (which only knows the head SHA) can find them (Kilo).
 #
 # Deployment lives in .github/workflows/preview-deploy.yml, a trusted
 # `workflow_run` subscriber that GitHub resolves from the default branch —
@@ -58,21 +59,11 @@ jobs:
         env:
           E2E_STATIC: "1"
 
-      - name: Stage Vercel Build Output API tree
-        # The trusted deploy workflow uploads this verbatim with
-        # `vercel deploy --prebuilt`, so no repo code (and no build) ever
-        # runs near the token.
-        run: |
-          rm -rf .vercel/output
-          mkdir -p .vercel/output/static
-          cp -R out/. .vercel/output/static/
-          echo '{"version":3,"routes":[{"handle":"filesystem"}]}' > .vercel/output/config.json
-
       - name: Upload preview bundle
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: browser-preview-${{ github.sha }}
+          name: browser-preview-${{ github.event.pull_request.head.sha || github.sha }}
           path: out/
           if-no-files-found: warn
           retention-days: 14
@@ -81,18 +72,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-${{ github.sha }}
+          name: playwright-report-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
             playwright-report/
             test-results/
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Upload Vercel build output
-        uses: actions/upload-artifact@v4
-        with:
-          name: vercel-output-${{ github.sha }}
-          path: .vercel/output/
-          include-hidden-files: true
-          if-no-files-found: warn
-          retention-days: 14

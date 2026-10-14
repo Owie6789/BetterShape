@@ -5,8 +5,10 @@ name: Preview Deploy (Trusted)
 # subscribers from this repository's DEFAULT branch, so these steps cannot
 # be modified by a PR — the only PR-controlled input is the downloaded
 # build artifact, and it is treated as untrusted data:
-#   * no step executes artifact content (the staged .vercel/output tree is
-#     uploaded verbatim by the pinned CLI), and
+#   * no step executes artifact content, and the Vercel Build Output tree
+#     is staged HERE from the static bundle with a fixed static-only
+#     config — a PR cannot smuggle Vercel Functions or routes into the
+#     deployment (CodeAnt), and
 #   * the CLI + its lockfile come from a checkout of the default branch.
 # Secrets never exist in the workflow that builds PR code (CodeAnt P1).
 # Diffs to this file are security-sensitive.
@@ -26,7 +28,7 @@ concurrency:
 jobs:
   resolve-pr:
     name: Resolve PR
-    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+    if: github.event.workflow_run.event == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -75,12 +77,13 @@ jobs:
   deploy-preview:
     name: Deploy preview to Vercel
     needs: resolve-pr
-    if: needs.resolve-pr.outputs.pr-number != ''
+    if: needs.resolve-pr.outputs.pr-number != '' && github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
       pull-requests: write
+      actions: read
     steps:
       # These steps hold the secrets and are defined on the default branch,
       # so a PR cannot modify them. The only checkout is the default branch
@@ -108,14 +111,27 @@ jobs:
             echo "::notice::Vercel secrets not configured — skipping live deploy. The static bundle is in the Preview (Browser) workflow artifacts; see docs/developing/browser-preview.mdx to enable."
           fi
 
-      - name: Download staged build output
+      - name: Download static bundle
         if: steps.vercel-check.outputs.enabled == 'true'
         uses: actions/download-artifact@v4
         with:
-          name: vercel-output-${{ github.event.workflow_run.head_sha }}
-          path: .vercel/output
+          name: browser-preview-${{ github.event.workflow_run.head_sha }}
+          path: preview-static
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
+
+      - name: Stage Vercel Build Output (static-only)
+        if: steps.vercel-check.outputs.enabled == 'true'
+        run: |
+          set -euo pipefail
+          # Staged here, never in the PR-controlled workflow: the only
+          # content deployed is the static bundle under a fixed config.
+          rm -rf .vercel/output
+          mkdir -p .vercel/output/static
+          cp -R preview-static/. .vercel/output/static/
+          printf '%s' '{"version":3,"routes":[{"handle":"filesystem"}]}' > .vercel/output/config.json
+          # Guard: this deployment must never carry serverless functions.
+          test ! -e .vercel/output/functions
 
       - name: Deploy to Vercel (preview)
         id: vercel-deploy
@@ -197,7 +213,7 @@ jobs:
               "",
               url
                 ? `**Live preview:** ${url}`
-                : "_No live URL from this workflow._ If the Vercel GitHub App is connected to this repo, it posts its own preview link on this PR. Otherwise download the `browser-preview` artifact from the Preview (Browser) workflow run and serve `out/` locally, or run `npm run dev:browser`.",
+                : "_No live URL from this workflow._ If the Vercel GitHub App is connected to this repo, it posts its own preview link on this PR. Otherwise download the `browser-preview-<commit>` artifact from the Preview (Browser) workflow run and serve `out/` locally, or run `npm run dev:browser`.",
               "",
               "The full UI runs in your browser with a mocked Tauri backend (fake project, files, Git, chats — no real data, no model keys). Seed the open-project state by adding `?seed=project` to the URL.",
               "",
@@ -245,3 +261,41 @@ jobs:
             echo ""
             echo "Static bundle + Playwright report are attached to the Preview (Browser) workflow run (\`browser-preview-${HEAD_SHA}\`, \`playwright-report-${HEAD_SHA}\`)."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  mark-stale:
+    name: Mark preview stale on failed build
+    needs: resolve-pr
+    if: needs.resolve-pr.outputs.pr-number != '' && github.event.workflow_run.conclusion != 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      # A failed build must not leave a previous preview URL presented as
+      # current (Sourcery): annotate the sticky comment instead.
+      - name: Annotate sticky comment
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ needs.resolve-pr.outputs.pr-number }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+        with:
+          script: |
+            const marker = "<!-- bettershape-browser-preview -->";
+            const issue_number = parseInt(process.env.PR_NUMBER, 10);
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              per_page: 100,
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            const note = `\n\n> ⚠️ Latest preview build (${process.env.CONCLUSION}) for \`${process.env.HEAD_SHA.slice(0, 7)}\` — any live URL above may be stale.`;
+            if (existing && !existing.body.includes("Latest preview build")) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: existing.body + note,
+              });
+            }
