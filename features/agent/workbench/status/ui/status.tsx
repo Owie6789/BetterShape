@@ -71,7 +71,88 @@ const StatusFileCrumb = ({ statusFile, relativePath }: { statusFile: string; rel
     </button>
 );
 
-export default function Status() {
+
+/** Right-hand editor status cluster (line/col, indentation, EOL, language). */
+const EditorStatusItems = ({
+    statusFile,
+    projectPath,
+    languageLabel,
+    typescriptVersion,
+    onIndentation,
+    onEol,
+}: {
+    statusFile: string;
+    projectPath: string | null;
+    languageLabel: string;
+    typescriptVersion: string | null | undefined;
+    onIndentation: () => void;
+    onEol: () => void;
+}) => {
+    const { editorStatus } = useEditorStatus();
+    const openLanguagePicker = () => openLanguageModePicker(statusFile, editorStatus.language);
+    return (
+        <>
+                        <StatusItem
+                            label="Go to Line/Column"
+                            onClick={() => {
+                                window.dispatchEvent(
+                                    new CustomEvent("bettershape-command-palette", {
+                                        detail: { mode: "goto_line", placeholder: "Line : Column" },
+                                    }),
+                                );
+                            }}
+                        >
+                            {`Ln ${editorStatus.line}, Col ${editorStatus.column}`}
+                        </StatusItem>
+
+                        <StatusItem label="Select Indentation" onClick={onIndentation}>
+                            <span className="hidden sm:inline">
+                                {editorStatus.insertSpaces
+                                    ? `Spaces: ${editorStatus.spaces}`
+                                    : `Tab Size: ${editorStatus.spaces}`}
+                            </span>
+                            <span className="sm:hidden">{editorStatus.spaces}</span>
+                        </StatusItem>
+
+                        <StatusItem label="Select Encoding">
+                            <span className="hidden md:inline">UTF-8</span>
+                        </StatusItem>
+
+                        <StatusItem label="Select End of Line Sequence" onClick={onEol}>
+                            <span className="hidden md:inline">{editorStatus.eol}</span>
+                        </StatusItem>
+
+                        <Tooltip content="Format Document">
+                            <button
+                                type="button"
+                                className="hidden lg:flex h-full px-1.5 items-center text-text-primary hover:bg-panel-hover transition-colors"
+                                onClick={() => dispatchEditorAction("format")}
+                            >
+                                <Icon icon={Code20Regular} />
+                            </button>
+                        </Tooltip>
+
+                        <StatusItem
+                            label="Select Language Mode"
+                            onClick={openLanguagePicker}
+                        >
+                            <span className="hidden sm:inline">
+                                {languageLabel}
+                                {typescriptVersion && editorStatus.language.includes("typescript") && (
+                                    <span className="text-text-muted ml-1">TS {typescriptVersion}</span>
+                                )}
+                            </span>
+                            <span className="sm:hidden">{languageLabel.slice(0, 3).toUpperCase()}</span>
+                        </StatusItem>
+
+                        <PythonInterpreterStatus
+                            language={editorStatus.language}
+                            projectPath={projectPath}
+                        />
+        </>
+    );
+};
+const Status = () => {
     // Status renders whenever a project is open, but EditorSplitProvider only
     // exists inside a file tab — use the optional hook and fall back to the
     // backend active file when there is no split provider (chat tabs, etc.).
@@ -149,72 +230,19 @@ export default function Status() {
             </div>
 
             <div className="relative z-30 ml-auto flex items-center h-full shrink-0 min-w-0">
-                {hasEditor && (
-                    <>
-                        <StatusItem
-                            label="Go to Line/Column"
-                            onClick={() => {
-                                window.dispatchEvent(
-                                    new CustomEvent("bettershape-command-palette", {
-                                        detail: { mode: "goto_line", placeholder: "Line : Column" },
-                                    }),
-                                );
-                            }}
-                        >
-                            {`Ln ${editorStatus.line}, Col ${editorStatus.column}`}
-                        </StatusItem>
-
-                        <StatusItem label="Select Indentation" onClick={openIndentationPicker}>
-                            <span className="hidden sm:inline">
-                                {editorStatus.insertSpaces
-                                    ? `Spaces: ${editorStatus.spaces}`
-                                    : `Tab Size: ${editorStatus.spaces}`}
-                            </span>
-                            <span className="sm:hidden">{editorStatus.spaces}</span>
-                        </StatusItem>
-
-                        <StatusItem label="Select Encoding">
-                            <span className="hidden md:inline">UTF-8</span>
-                        </StatusItem>
-
-                        <StatusItem label="Select End of Line Sequence" onClick={openEolPicker}>
-                            <span className="hidden md:inline">{editorStatus.eol}</span>
-                        </StatusItem>
-
-                        <Tooltip content="Format Document">
-                            <button
-                                type="button"
-                                className="hidden lg:flex h-full px-1.5 items-center text-text-primary hover:bg-panel-hover transition-colors"
-                                onClick={() => dispatchEditorAction("format")}
-                            >
-                                <Icon icon={Code20Regular} />
-                            </button>
-                        </Tooltip>
-
-                        <StatusItem
-                            label="Select Language Mode"
-                            onClick={() => {
-                                if (statusFile) {
-                                    openLanguageModePicker(statusFile, editorStatus.language);
-                                }
-                            }}
-                        >
-                            <span className="hidden sm:inline">
-                                {languageLabel}
-                                {typescriptVersion && editorStatus.language.includes("typescript") && (
-                                    <span className="text-text-muted ml-1">TS {typescriptVersion}</span>
-                                )}
-                            </span>
-                            <span className="sm:hidden">{languageLabel.slice(0, 3).toUpperCase()}</span>
-                        </StatusItem>
-
-                        <PythonInterpreterStatus
-                            language={editorStatus.language}
-                            projectPath={project_path}
-                        />
-                    </>
-                )}
+                {hasEditor ? (
+                    <EditorStatusItems
+                        statusFile={statusFile as string}
+                        projectPath={project_path}
+                        languageLabel={languageLabel}
+                        typescriptVersion={typescriptVersion}
+                        onIndentation={openIndentationPicker}
+                        onEol={openEolPicker}
+                    />
+                ) : null}
             </div>
         </div>
     );
-}
+};
+
+export default Status;

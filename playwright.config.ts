@@ -28,19 +28,27 @@ const useStatic = process.env.E2E_STATIC === "1";
  *      Set `PLAYWRIGHT_SANDBOX_LIBS` to a directory of shared libraries
  *      (libnss3/libnspr4) to prepend to LD_LIBRARY_PATH if the host lacks them.
  */
-function resolveChromium(): { executablePath?: string; args?: string[] } {
-    if (process.env.PLAYWRIGHT_CHROMIUM_PATH) {
-        return { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH };
-    }
+const bundledChromiumUsable = (): boolean => {
     try {
-        // playwright-core is a dependency of @playwright/test; use it only to
-        // ask where its bundled Chromium would live.
+        // playwright-core is a dependency of @playwright/test; use it only
+        // to ask where its bundled Chromium would live.
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { chromium } = require("playwright-core") as typeof import("playwright-core");
-        if (existsSync(chromium.executablePath())) return {};
+        return existsSync(chromium.executablePath());
     } catch {
-        /* fall through to the sandbox build */
+        return false;
     }
+};
+
+/** Prepend the sandbox shared-lib dir (libnss3/libnspr4) when provided. */
+const applySandboxLibs = () => {
+    const libs = process.env.PLAYWRIGHT_SANDBOX_LIBS;
+    if (!libs) return;
+    const existing = process.env.LD_LIBRARY_PATH;
+    process.env.LD_LIBRARY_PATH = existing ? `${libs}:${existing}` : libs;
+};
+
+const sandboxChromium = (): { executablePath?: string; args?: string[] } => {
     try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const sparticuzModule = require("@sparticuz/chromium") as {
@@ -55,12 +63,7 @@ function resolveChromium(): { executablePath?: string; args?: string[] } {
             ],
             { encoding: "utf8", cwd: __dirname },
         ).trim();
-        if (process.env.PLAYWRIGHT_SANDBOX_LIBS) {
-            const existing = process.env.LD_LIBRARY_PATH;
-            process.env.LD_LIBRARY_PATH = existing
-                ? `${process.env.PLAYWRIGHT_SANDBOX_LIBS}:${existing}`
-                : process.env.PLAYWRIGHT_SANDBOX_LIBS;
-        }
+        applySandboxLibs();
         // Deliberately NOT sparticuz's full Lambda arg set: `--single-process`
         // makes the browser process unresponsive under a heavy dev bundle.
         // Playwright supplies sane defaults; add only sandbox essentials.
@@ -71,7 +74,14 @@ function resolveChromium(): { executablePath?: string; args?: string[] } {
     } catch {
         return {};
     }
-}
+};
+
+const resolveChromium = (): { executablePath?: string; args?: string[] } => {
+    if (process.env.PLAYWRIGHT_CHROMIUM_PATH) {
+        return { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH };
+    }
+    return bundledChromiumUsable() ? {} : sandboxChromium();
+};
 
 const chromiumResolution = resolveChromium();
 

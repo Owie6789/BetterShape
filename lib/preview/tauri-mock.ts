@@ -177,6 +177,12 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
 
     const emitProjectState = () => emit("project-state-update", projectState());
 
+    /** Open a file tab unless one exists (mirrors backend open semantics). */
+    const ensureOpenFile = (path: string, name: string) => {
+        if (state.openFiles.some((f) => f.path === path)) return;
+        state.openFiles.push({ path, name, is_dirty: false });
+    };
+
     const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
         // ── project / files ──────────────────────────────────────────────
         get_project_state: () => projectState(),
@@ -212,10 +218,10 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         save_file_bytes: () => null,
         open_file: (args) => {
             const path = String(args.path ?? "");
-            if (path && !state.openFiles.some((f) => f.path === path)) {
-                state.openFiles.push({ path, name: String(args.name ?? fileNameOf(path)), is_dirty: false });
+            if (path) {
+                ensureOpenFile(path, String(args.name ?? fileNameOf(path)));
+                state.activeFile = path;
             }
-            state.activeFile = path || state.activeFile;
             emitProjectState();
             return null;
         },
