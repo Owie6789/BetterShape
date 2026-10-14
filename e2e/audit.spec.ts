@@ -7,6 +7,7 @@ import {
     collectIpcInventory,
     collectTimings,
     runAxeAudit,
+    waitForIpcQuiet,
     type A11yBaseline,
     type RouteAudit,
 } from "./helpers/audit";
@@ -37,8 +38,9 @@ test.describe("@audit route crawl", () => {
         }, testInfo) => {
             await gotoRoute(page, route.path);
             await expectPreviewActive(page, seedMode);
-            // Let post-mount effects (settings, git, chat loads) settle.
-            await page.waitForTimeout(750);
+            // Let post-mount effects (settings, git, chat loads) settle:
+            // wait for a quiet IPC window rather than a fixed sleep.
+            await waitForIpcQuiet(page);
 
             const violations = await runAxeAudit(page);
             assertA11yWithinBaseline(violations, route.path, a11yBaseline);
@@ -64,7 +66,10 @@ test.describe("@audit route crawl", () => {
         });
     }
 
-    test.afterAll(async ({}, testInfo) => {
+    // Playwright requires a destructured fixtures arg even when the hook
+    // only needs testInfo; `browser` is worker-scoped so it is legal (and
+    // already running) in afterAll.
+    test.afterAll(async ({ browser: _browser }, testInfo) => {
         // A real file (not just a report attachment) so agents/tooling can
         // diff audits across runs: test-results/browser-audit.json.
         const body = JSON.stringify(audits, null, 2);

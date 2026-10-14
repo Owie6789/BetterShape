@@ -25,7 +25,7 @@ export async function runAxeAudit(page: Page) {
         .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
         .analyze();
     return results.violations;
-}
+};
 
 export type A11yBaseline = Record<string, Record<string, number>>;
 
@@ -36,11 +36,11 @@ export type A11yBaseline = Record<string, Record<string, number>>;
  * the whole app in one PR — but regressions can never sneak in. Lower the
  * baseline numbers as violations get fixed.
  */
-export function assertA11yWithinBaseline(
+export const assertA11yWithinBaseline = (
     violations: Awaited<ReturnType<typeof runAxeAudit>>,
     route: string,
     baseline: A11yBaseline,
-) {
+) => {
     const allowed = baseline[route] ?? {};
     const regressions = violations
         .filter((v) => v.impact === "critical" || v.impact === "serious")
@@ -57,8 +57,8 @@ export function assertA11yWithinBaseline(
 }
 
 /** Read the preview bridge's IPC inventory (installed by lib/preview). */
-export async function collectIpcInventory(page: Page) {
-    return page.evaluate(() => {
+export const collectIpcInventory = (page: Page) =>
+    page.evaluate(() => {
         const preview = (window as unknown as {
             __BETTERSHAPE_PREVIEW__?: {
                 invokes: Array<{ cmd: string }>;
@@ -68,10 +68,9 @@ export async function collectIpcInventory(page: Page) {
         if (!preview) return { count: 0, unknown: [] as string[] };
         return { count: preview.invokes.length, unknown: preview.unknownCommands() };
     });
-}
 
-export async function collectTimings(page: Page) {
-    return page.evaluate(() => {
+export const collectTimings = (page: Page) =>
+    page.evaluate(() => {
         const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
         if (!nav) return null;
         return {
@@ -79,12 +78,31 @@ export async function collectTimings(page: Page) {
             loadMs: Math.round(nav.loadEventEnd),
         };
     });
-}
+
+/**
+ * Deterministic settle: poll until the mock IPC log has been quiet for
+ * `quietMs` (post-mount loads done) instead of sleeping a fixed duration.
+ */
+export const waitForIpcQuiet = async (page: Page, quietMs = 300) => {
+    await expect
+        .poll(
+            () =>
+                page.evaluate(() => {
+                    const preview = (window as unknown as {
+                        __BETTERSHAPE_PREVIEW__?: { invokes: Array<{ at: number }> };
+                    }).__BETTERSHAPE_PREVIEW__;
+                    const last = preview?.invokes[preview.invokes.length - 1];
+                    return last ? Date.now() - last.at : Number.POSITIVE_INFINITY;
+                }),
+            { timeout: 10_000 },
+        )
+        .toBeGreaterThanOrEqual(quietMs);
+};
 
 /** Screenshot a route for human/agent review and attach it to the report. */
-export async function captureRoute(page: Page, testInfo: TestInfo, name: string) {
+export const captureRoute = async (page: Page, testInfo: TestInfo, name: string) => {
     const path = testInfo.outputPath(`audit-${name}.png`);
     await page.screenshot({ path, fullPage: true, animations: "disabled" });
     await testInfo.attach(`audit-${name}`, { path, contentType: "image/png" });
     return path;
-}
+};

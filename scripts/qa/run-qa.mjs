@@ -13,11 +13,17 @@
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
+
+const require = createRequire(import.meta.url);
+// `playwright/cli.js` is not an exported subpath — resolve via package.json.
+// Spawning node directly avoids `npx` PATH lookup entirely.
+const playwrightCli = join(dirname(require.resolve("playwright/package.json")), "cli.js");
 
 const extraArgs = process.argv.slice(2);
-const run = spawnSync("npx", ["playwright", "test", ...extraArgs], {
+const run = spawnSync(process.execPath, [playwrightCli, "test", ...extraArgs], {
     stdio: "inherit",
-    shell: process.platform === "win32",
 });
 
 const resultsPath = "test-results/results.json";

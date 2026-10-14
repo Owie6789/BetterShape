@@ -43,16 +43,32 @@ const MIME = {
 };
 
 function resolveFile(urlPath) {
-    const clean = normalize(decodeURIComponent(urlPath)).replace(/^(\.\.[/\\])+/, "");
+    let decoded;
+    try {
+        decoded = decodeURIComponent(urlPath);
+    } catch {
+        return null; // malformed percent-encoding → 400/404, never a crash
+    }
+    if (decoded.includes("\0")) return null;
+    const clean = normalize(decoded).replace(/^(\.\.[/\\])+/, "");
     const direct = join(root, clean);
+    // Hard containment: the resolved path must stay inside `out/`.
+    if (direct !== root && !direct.startsWith(root + sep)) return null;
     if (existsSync(direct) && statSync(direct).isFile()) return direct;
-    const asIndex = join(root, clean, "index.html");
+    const asIndex = join(direct, "index.html");
     if (existsSync(asIndex)) return asIndex;
     return null;
 }
 
 createServer((req, res) => {
-    const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+    let url;
+    try {
+        url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+    } catch {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("Bad request\n");
+        return;
+    }
     const file = resolveFile(url.pathname);
     if (!file) {
         res.writeHead(404, { "content-type": "text/plain" });

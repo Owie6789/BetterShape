@@ -133,12 +133,12 @@ export { expect };
  * (e.g. Playwright reused a plain `npm run dev` server) — specs should fail
  * loudly rather than test a dead, unmocked UI.
  */
-export async function expectPreviewActive(page: Page, seed: SeedMode) {
+export const expectPreviewActive = async (page: Page, seed: SeedMode) => {
     await expect(page.locator("html")).toHaveAttribute("data-bettershape-preview", seed, { timeout: 30_000 });
-}
+};
 
 /** Navigate and wait until the app shell is hydrated enough to inspect. */
-export async function gotoRoute(page: Page, path: string) {
+export const gotoRoute = async (page: Page, path: string) => {
     await page.goto(path, { waitUntil: "domcontentloaded" });
     await page.waitForLoadState("load");
-}
+};

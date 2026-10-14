@@ -92,7 +92,12 @@ const PREVIEW_DIRS: Record<string, Array<{ name: string; is_dir: boolean }>> = {
     ],
 };
 
-function previewLogEntries() {
+const fileNameOf = (path: string): string => path.split("/").pop() ?? path;
+
+const asSeedMode = (value: string | null | undefined): PreviewSeedMode | null =>
+    value === "project" || value === "welcome" ? value : null;
+
+const previewLogEntries = () => {
     const now = Date.now();
     return [3, 2, 1].map((n) => ({
         hash: `preview000${n}00000000000000000000000000`,
@@ -107,33 +112,34 @@ function previewLogEntries() {
         parent_count: n === 1 ? 0 : 1,
         parents: n === 1 ? [] : [`preview000${n - 1}00000000000000000000000000`],
     }));
-}
+};
 
-function resolveSeedMode(): PreviewSeedMode {
+/** Seed sources in priority order: Playwright init-script global, URL, storage. */
+const SEED_CANDIDATES: Array<() => string | null | undefined> = [
+    () => (typeof window === "undefined" ? null : window.__BETTERSHAPE_PREVIEW_SEED__),
+    () => new URLSearchParams(window.location.search).get("seed"),
+    () => window.localStorage.getItem("bettershape:preview-seed"),
+];
+
+const resolveSeedMode = (): PreviewSeedMode => {
     if (typeof window === "undefined") return "welcome";
-    const fromGlobal = window.__BETTERSHAPE_PREVIEW_SEED__;
-    if (fromGlobal === "project" || fromGlobal === "welcome") return fromGlobal;
-    try {
-        const fromQuery = new URLSearchParams(window.location.search).get("seed");
-        if (fromQuery === "project" || fromQuery === "welcome") return fromQuery;
-    } catch {
-        /* ignore */
-    }
-    try {
-        const fromStorage = window.localStorage.getItem("bettershape:preview-seed");
-        if (fromStorage === "project" || fromStorage === "welcome") return fromStorage;
-    } catch {
-        /* ignore */
+    for (const read of SEED_CANDIDATES) {
+        try {
+            const mode = asSeedMode(read());
+            if (mode) return mode;
+        } catch {
+            /* source unavailable — try the next one */
+        }
     }
     return "welcome";
-}
+};
 
 /**
  * Pure IPC handler factory — exported separately from the installer so the
  * Vitest suite can exercise seed state transitions without a browser IPC
  * bridge. Returns a value (or throws) exactly like a Tauri command would.
  */
-export function createPreviewInvokeHandler(seed: PreviewSeedMode) {
+export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
     const state = {
         projectPath: seed === "project" ? PREVIEW_PROJECT_PATH : null as string | null,
         openFiles: seed === "project"
@@ -206,9 +212,8 @@ export function createPreviewInvokeHandler(seed: PreviewSeedMode) {
         save_file_bytes: () => null,
         open_file: (args) => {
             const path = String(args.path ?? "");
-            const name = String(args.name ?? path.split("/").pop() ?? path);
             if (path && !state.openFiles.some((f) => f.path === path)) {
-                state.openFiles.push({ path, name, is_dirty: false });
+                state.openFiles.push({ path, name: String(args.name ?? fileNameOf(path)), is_dirty: false });
             }
             state.activeFile = path || state.activeFile;
             emitProjectState();
@@ -345,63 +350,76 @@ export function createPreviewInvokeHandler(seed: PreviewSeedMode) {
         get_outline: () => null,
     };
 
+    /** Static plugin-command results (event listen/emit handled below). */
+    const PLUGIN_RESULTS: Record<string, unknown> = {
+        "plugin:app|version": "1.0.3-preview",
+        "plugin:app|name": "BetterShape (Browser Preview)",
+        "plugin:store|load": 1,
+        "plugin:store|get": null,
+        "plugin:store|keys": [],
+        "plugin:store|entries": [],
+        "plugin:store|length": 0,
+        "plugin:dialog|open": null,
+        "plugin:dialog|save": null,
+        "plugin:notification|is_permission_granted": false,
+        "plugin:deep-link|get_current": null,
+    };
+
+    function pluginFallback(cmd: string): unknown {
+        // Event plugin: listeners are tracked in `trackListener` so the
+        // `emit()` helper above can deliver to them.
+        if (cmd === "plugin:event|listen") return nextEventId++;
+        if (cmd in PLUGIN_RESULTS) return PLUGIN_RESULTS[cmd];
+        if (cmd.startsWith("plugin:event|")) return null;
+        if (cmd.startsWith("plugin:dialog|")) return false;
+        return null;
+    }
+
+    const PLURAL_GETTER = /^(get|list|load|search|discover|fetch)_.+s$/;
+    const BOOLEAN_GETTER = /^(is|has|can)_/;
+
     /** Safe fallback for any command without an explicit handler. */
     function fallback(cmd: string): unknown {
         if (cmd.startsWith("plugin:")) return pluginFallback(cmd);
         // Plural getters/listers return collections; singular getters fall
         // back to null (returning [] for a string/object-typed command
         // crashes callers, e.g. `title.trim()`).
-        if (/^(get|list|load|search|discover|fetch)_.+s$/.test(cmd)) return [];
-        if (cmd.startsWith("is_") || cmd.startsWith("has_") || cmd.startsWith("can_")) return false;
-        return null;
+        if (PLURAL_GETTER.test(cmd)) return [];
+        return BOOLEAN_GETTER.test(cmd) ? false : null;
     }
 
-    function pluginFallback(cmd: string): unknown {
-        // Event plugin: track listeners so `emit()` above can deliver.
-        if (cmd === "plugin:event|listen") return nextEventId++;
-        if (cmd === "plugin:event|emit" || cmd === "plugin:event|unlisten") return null;
-        if (cmd === "plugin:app|version") return "1.0.3-preview";
-        if (cmd === "plugin:app|name") return "BetterShape (Browser Preview)";
-        if (cmd === "plugin:store|load") return 1;
-        if (cmd === "plugin:store|get") return null;
-        if (cmd === "plugin:store|keys") return [];
-        if (cmd === "plugin:store|entries") return [];
-        if (cmd === "plugin:store|length") return 0;
-        if (cmd === "plugin:dialog|open" || cmd === "plugin:dialog|save") return null;
-        if (cmd.startsWith("plugin:dialog|")) return false;
-        if (cmd === "plugin:notification|is_permission_granted") return false;
-        if (cmd === "plugin:deep-link|get_current") return null;
-        return null;
+    function trackListener(cmd: string, args?: Record<string, unknown>) {
+        if (cmd !== "plugin:event|listen" || typeof args?.event !== "string") return;
+        const handlerId = (args as { handler?: unknown }).handler;
+        if (typeof handlerId !== "number") return;
+        if (!listeners.has(args.event)) listeners.set(args.event, new Set());
+        listeners.get(args.event)?.add(handlerId);
     }
 
     function handle(cmd: string, args?: Record<string, unknown>): unknown {
-        if (cmd === "plugin:event|listen" && args && typeof args.event === "string") {
-            const handlerId = (args as { handler?: unknown }).handler;
-            if (typeof handlerId === "number") {
-                if (!listeners.has(args.event)) listeners.set(args.event, new Set());
-                listeners.get(args.event)?.add(handlerId);
-            }
-        }
+        trackListener(cmd, args);
         const handler = handlers[cmd];
-        if (handler) return handler(args ?? {});
-        return fallback(cmd);
+        return handler ? handler(args ?? {}) : fallback(cmd);
     }
 
-    return { handle, projectState, emit };
-}
+    // `commands` (the handler keys) lets the installer flag unknown invokes
+    // for QA reports without a hand-maintained mirror list that can drift.
+    return { handle, projectState, emit, commands: Object.keys(handlers) };
+};
 
 /**
  * Install the mocked Tauri IPC bridge in the current page. See the module
  * header for the two safety gates. Returns true when mocks were installed.
  */
-export function installBrowserPreviewMocks(): boolean {
+export const installBrowserPreviewMocks = (): boolean => {
     if (typeof window === "undefined") return false;
     if (process.env.NEXT_PUBLIC_BROWSER_PREVIEW !== "1") return false;
     if ("__TAURI_INTERNALS__" in window) return false;
     if (window.__BETTERSHAPE_PREVIEW__) return false;
 
     const seed = resolveSeedMode();
-    const { handle } = createPreviewInvokeHandler(seed);
+    const { handle, commands } = createPreviewInvokeHandler(seed);
+    const known = new Set(commands);
     const invokes: PreviewInvokeRecord[] = [];
 
     // Synchronous install: this module is only imported from
@@ -412,7 +430,7 @@ export function installBrowserPreviewMocks(): boolean {
     mockWindows("main");
     mockConvertFileSrc("windows");
     mockIPC((cmd, args) => {
-        const unknown = !cmd.startsWith("plugin:") && !KNOWN_COMMANDS.has(cmd);
+        const unknown = !cmd.startsWith("plugin:") && !known.has(cmd);
         const recordArgs = args as Record<string, unknown> | undefined;
         invokes.push({ cmd, args: recordArgs, unknown, at: Date.now() });
         if (invokes.length > 500) invokes.shift();
@@ -421,40 +439,12 @@ export function installBrowserPreviewMocks(): boolean {
     window.__BETTERSHAPE_PREVIEW__ = {
         seed,
         invokes,
-        unknownCommands: () => [...new Set(invokes.filter((i) => i.unknown).map((i) => i.cmd))].sort(),
+        unknownCommands: () =>
+            [...new Set(invokes.filter((i) => i.unknown).map((i) => i.cmd))].sort((a, b) => a.localeCompare(b)),
         clearInvokes: () => {
             invokes.length = 0;
         },
     };
     document.documentElement.dataset.bettershapePreview = seed;
     return true;
-}
-
-/**
- * Commands with explicit handlers in `createPreviewInvokeHandler`, plus the
- * plugin surface. Used only to flag "unknown" invokes for QA reports — an
- * unknown command is not an error (it receives a safe default), but listing
- * them shows where fixture fidelity should grow next.
- */
-const KNOWN_COMMANDS = new Set([
-    "get_project_state", "set_project_path", "set_extra_workspace_folders", "grant_ipc_path",
-    "is_fresh_window", "is_workspace_trusted", "set_workspace_trusted", "home_dir", "ls_dir",
-    "read_file", "read_file_within", "read_file_bytes", "save_file", "save_file_bytes",
-    "open_file", "close_file", "close_all_files", "set_active_file", "pin_file",
-    "mark_file_dirty", "reorder_files", "close_to_right", "close_saved", "create_file",
-    "create_dir", "delete_path", "trash_path", "rename_path", "copy_path", "reveal_path",
-    "open_in_app", "open_url_external", "ensure_path_within", "get_rust_deps",
-    "git_discover_repos", "git_resolve_repo_for_file", "git_status", "git_branches",
-    "git_current_branch", "git_branch_details", "git_remote_branches", "git_list_remotes",
-    "git_has_remote", "git_remote_url", "git_sync_status", "git_log", "git_log_stream_start",
-    "git_log_stream_next", "git_log_stream_stop", "git_branch_graph", "git_diff",
-    "git_file_diff", "git_list_hunks", "git_stash_list", "git_list_tags", "git_in_progress",
-    "git_activity_timeline", "get_conversations", "get_conversation_messages",
-    "get_chat_history", "get_chat_title", "get_current_conversation_id", "get_ai_config", "ai_provider_status",
-    "ai_load_keys", "ai_vault_supported", "get_chat_generation_state", "get_compaction_state",
-    "github_auth_status", "get_mcp_status", "get_mcp_tools", "get_mcp_config_path",
-    "ensure_mcp_config", "sync_mcp_servers", "set_ai_config",
-    "read_mcp_config", "get_index_status", "get_project_stats", "discover_tests",
-    "search_project_files", "search_content", "search_codebase", "browser_tabs",
-    "browser_history", "pty_available_shells", "get_package_info", "get_outline",
-]);
+};

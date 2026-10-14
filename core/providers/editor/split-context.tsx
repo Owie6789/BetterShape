@@ -281,6 +281,4 @@ export function useEditorSplit() {
  * Returns null when no split provider is mounted; callers then fall back
  * to the backend's active file.
  */
-export function useEditorSplitOptional() {
-    return useContext(EditorGroupsContext) ?? null;
-}
+export const useEditorSplitOptional = () => useContext(EditorGroupsContext) ?? null;

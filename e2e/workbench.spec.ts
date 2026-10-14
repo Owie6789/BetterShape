@@ -30,7 +30,7 @@ test.describe("workbench (seeded project)", () => {
         // Opening a file creates a workspace tab and the editor reads the
         // file through the IPC bridge (read_file for src/App.tsx).
         await expect
-            .poll(async () =>
+            .poll(() =>
                 page.evaluate(() => {
                     const preview = (window as unknown as {
                         __BETTERSHAPE_PREVIEW__?: {

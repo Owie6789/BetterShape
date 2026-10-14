@@ -23,30 +23,43 @@ import { GitStatusButton } from "./git-status";
 import { StatusItem } from "./status-item";
 import { PythonInterpreterStatus } from "./python-interpreter";
 
+type SplitState = ReturnType<typeof useEditorSplitOptional>;
+
+/** File the status bar describes: the focused split group wins when split. */
+const pickStatusFile = (split: SplitState, activeFile: string | null | undefined): string | null => {
+    if (split?.splitEnabled && split.focusedGroup === "right") {
+        return split.getGroupActiveFile("right");
+    }
+    return activeFile ?? null;
+};
+
+/** Project-relative display path for the status bar (basename fallback). */
+const relativeStatusPath = (statusFile: string | null, projectPath: string | null | undefined): string => {
+    if (!statusFile || !projectPath) return statusFile || "";
+    const normProject = projectPath.replace(/\\/g, "/").replace(/\/$/, "");
+    const normFile = statusFile.replace(/\\/g, "/");
+    if (normFile.toLowerCase().startsWith(`${normProject.toLowerCase()}/`)) {
+        return normFile.slice(normProject.length + 1);
+    }
+    return statusFile.split(/[\\/]/).pop() || statusFile;
+};
+
 export default function Status() {
     // Status renders whenever a project is open, but EditorSplitProvider only
     // exists inside a file tab — use the optional hook and fall back to the
     // backend active file when there is no split provider (chat tabs, etc.).
     const split = useEditorSplitOptional();
     const { active_file, project_path } = useProjectState();
-    const statusFile =
-        split?.splitEnabled && split.focusedGroup === "right"
-            ? split.getGroupActiveFile("right")
-            : active_file;
+    const statusFile = pickStatusFile(split, active_file);
     const progressMessages = useAllProgressMessages();
     const { editorStatus, typescriptVersion } = useEditorStatus();
     const latestProgressMessage = progressMessages[progressMessages.length - 1] ?? null;
     const hasEditor = Boolean(statusFile);
 
-    const relativePath = useMemo(() => {
-        if (!statusFile || !project_path) return statusFile || "";
-        const normProject = project_path.replace(/\\/g, "/").replace(/\/$/, "");
-        const normFile = statusFile.replace(/\\/g, "/");
-        if (normFile.toLowerCase().startsWith(`${normProject.toLowerCase()}/`)) {
-            return normFile.slice(normProject.length + 1);
-        }
-        return statusFile.split(/[\\/]/).pop() || statusFile;
-    }, [statusFile, project_path]);
+    const relativePath = useMemo(
+        () => relativeStatusPath(statusFile, project_path),
+        [statusFile, project_path],
+    );
 
     const languageLabel = useMemo(
         () => getLanguageLabel(editorStatus.language || "plaintext"),

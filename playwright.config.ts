@@ -108,7 +108,10 @@ export default defineConfig({
         : {
               command: useStatic ? "npm run preview:browser" : "npm run dev:browser",
               url: baseURL,
-              reuseExistingServer: !process.env.CI,
+              // Never silently reuse a running server in static mode: a
+              // developer's plain `next dev` on the same port would serve an
+              // unmocked app and the suite would test the wrong thing.
+              reuseExistingServer: !process.env.CI && !useStatic,
               timeout: 300_000,
           },
 });

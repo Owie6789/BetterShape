@@ -10,15 +10,20 @@
  * the mock installer additionally refuses to run inside a real Tauri webview.
  */
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+
+const require = createRequire(import.meta.url);
+// Spawn Node with resolved entry files instead of `npm`/`npx` from PATH:
+// no shell shim, no PATH hijack surface (and identical behavior on win32).
+const nextBin = require.resolve("next/dist/bin/next");
+const runtimeScript = fileURLToPath(new URL("../build/preview.mjs", import.meta.url));
 
 const env = { ...process.env, NEXT_PUBLIC_BROWSER_PREVIEW: "1" };
 
-for (const args of [["run", "build:runtime"], ["run", "build"]]) {
-    const result = spawnSync("npm", args, {
-        stdio: "inherit",
-        env,
-        shell: process.platform === "win32",
-    });
+// `npm run build:runtime` then `npm run build`, via node directly.
+for (const args of [[runtimeScript], [nextBin, "build"]]) {
+    const result = spawnSync(process.execPath, args, { stdio: "inherit", env });
     if (result.status !== 0) process.exit(result.status ?? 1);
 }
 console.log("[build:preview] Static Browser Preview written to out/");
