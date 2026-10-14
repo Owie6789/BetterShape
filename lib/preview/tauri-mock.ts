@@ -182,6 +182,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         ) as typeof PREVIEW_DIRS,
         branch: "main",
         branches: ["main", "preview/browser-qa"],
+        logStreamOffset: 0,
     };
     const listeners = new Map<string, Set<number>>();
     // `listen` records the callback id but returns a separate subscription
@@ -376,8 +377,19 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         git_remote_url: () => null,
         git_sync_status: () => ({ ahead: 0, behind: 0 }),
         git_log: () => previewLogEntries(),
-        git_log_stream_start: () => null,
-        git_log_stream_next: () => previewLogEntries(),
+        // Stateful paging: every page must advance, or the graph appends
+        // duplicate commits with duplicate row keys (CodeAnt).
+        git_log_stream_start: () => {
+            state.logStreamOffset = 0;
+            return null;
+        },
+        git_log_stream_next: (args) => {
+            const entries = previewLogEntries();
+            const limit = typeof args.limit === "number" ? args.limit : entries.length;
+            const page = entries.slice(state.logStreamOffset, state.logStreamOffset + limit);
+            state.logStreamOffset += page.length;
+            return page;
+        },
         git_log_stream_stop: () => null,
         git_branch_graph: () => ({
             nodes: [{

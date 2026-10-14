@@ -67,14 +67,18 @@ jobs:
               core.warning(`listPullRequestsAssociatedWithCommit failed: ${e.message}`);
             }
             let pr = prs.find((p) => p.state === "open") || prs[0];
-            if (!pr && process.env.HEAD_BRANCH) {
+            if (!pr) {
+              // Fallback: match open PRs by head SHA locally. A
+              // `head: owner:branch` query would need the *fork* owner's
+              // login, which the workflow_run payload does not carry
+              // directly (CodeAnt).
               const res = await github.rest.pulls.list({
                 owner,
                 repo,
                 state: "open",
-                head: `${owner}:${process.env.HEAD_BRANCH}`,
+                per_page: 100,
               });
-              pr = res.data[0];
+              pr = res.data.find((p) => p.head.sha === sha);
             }
             if (!pr) {
               core.info("No PR found for this commit — skipping deploy.");

@@ -195,3 +195,18 @@ describe("mock fidelity (Sourcery/CodeAnt threads)", () => {
         expect(info.dev_dependencies).toEqual([]);
     });
 });
+
+describe("git log streaming (CodeAnt)", () => {
+    it("pages advance without duplicating commits", () => {
+        const { handle } = createPreviewInvokeHandler("project");
+        handle("git_log_stream_start", { path: PREVIEW_PROJECT_PATH, callerId: "graph" });
+        const first = handle("git_log_stream_next", { callerId: "graph", limit: 2 }) as Array<{ hash: string }>;
+        const second = handle("git_log_stream_next", { callerId: "graph", limit: 2 }) as Array<{ hash: string }>;
+        const third = handle("git_log_stream_next", { callerId: "graph", limit: 2 }) as Array<{ hash: string }>;
+        expect(first).toHaveLength(2);
+        expect(second).toHaveLength(1);
+        expect(third).toEqual([]);
+        const hashes = [...first, ...second].map((e) => e.hash);
+        expect(new Set(hashes).size).toBe(hashes.length);
+    });
+});
