@@ -31,12 +31,16 @@ export const Checkmark = React.forwardRef<HTMLDivElement, CheckmarkProps>(
             toggle();
         };
 
+        // aria-checked is tri-state: "mixed" replaces indeterminate.
+        const ariaChecked = checked === "indeterminate" ? "mixed" : checked;
+        const isOn = checked === true || checked === "indeterminate";
+
         return (
             <div
                 ref={ref}
                 role="checkbox"
                 aria-label={label ?? "Checkbox"}
-                aria-checked={checked === "indeterminate" ? "mixed" : checked}
+                aria-checked={ariaChecked}
                 tabIndex={disabled ? -1 : 0}
                 onClick={handleClick}
                 onKeyDown={(e) => {
@@ -49,8 +53,7 @@ export const Checkmark = React.forwardRef<HTMLDivElement, CheckmarkProps>(
                     "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-md border border-border-subtle bg-panel-hover cursor-pointer overflow-hidden",
                     "transition-colors duration-[var(--transition-fast)] ease-[var(--ease-out)]",
                     "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-border-focus",
-                    checked === true && "bg-accent border-accent text-accent-fg",
-                    checked === "indeterminate" && "bg-accent border-accent text-accent-fg",
+                    isOn && "bg-accent border-accent text-accent-fg",
                     !checked && "hover:border-border hover:bg-panel-hover",
                     disabled && "cursor-not-allowed opacity-50",
                     className

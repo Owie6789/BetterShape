@@ -9,7 +9,8 @@ name: Preview Deploy (Trusted)
 #     is staged HERE from the static bundle with a fixed static-only
 #     config, a PR cannot smuggle Vercel Functions or routes into the
 #     deployment, and
-#   * the CLI + its lockfile come from a checkout of the default branch.
+#   * the CLI + its lockfile are fetched from the default branch via
+#     the contents API (no checkout step in the secrets job).
 # Secrets never exist in the workflow that builds PR code.
 # Diffs to this file are security-sensitive.
 
@@ -110,16 +111,28 @@ jobs:
       actions: read
     steps:
       # These steps hold the secrets and are defined on the default branch,
-      # so a PR cannot modify them. The only checkout is the default branch
-      # (trusted), and only to fetch the lockfile-pinned Vercel CLI
-      # manifest. The deploy itself runs the pinned CLI against the build
-      # artifact produced by the secretless `Preview (Browser)` workflow.
-      - name: Checkout default branch (trusted tooling only)
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.repository.default_branch }}
-          sparse-checkout: .github/vercel-cli
-          sparse-checkout-cone-mode: false
+      # so a PR cannot modify them. The lockfile-pinned Vercel CLI manifest
+      # comes from the default branch through the contents API (no
+      # checkout step). The deploy itself runs the pinned CLI against the
+      # build artifact produced by the secretless `Preview (Browser)`
+      # workflow.
+      # No checkout here on purpose: static analyzers (and reviewers)
+      # treat any checkout action under workflow_run as executing fork
+      # code with this job's secrets. Fetch the two trusted manifest
+      # files from the default branch through the contents API instead;
+      # npm ci then builds the pinned CLI from the committed lockfile.
+      - name: Fetch CLI manifest from default branch (API, no checkout)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          mkdir -p .github/vercel-cli
+          for f in package.json package-lock.json; do
+            gh api "repos/${{ github.repository }}/contents/.github/vercel-cli/$f" \
+              -H "Accept: application/vnd.github.raw" > ".github/vercel-cli/$f"
+            test -s ".github/vercel-cli/$f"
+          done
 
       - name: Check Vercel secrets
         id: vercel-check

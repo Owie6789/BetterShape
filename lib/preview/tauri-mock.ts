@@ -584,8 +584,9 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
 
     const handleEventEmit = (args: Record<string, unknown>): unknown => {
         const event = typeof args.event === "string" ? args.event : null;
-        if (!event) return null;
-        emit(event, args.payload);
+        if (event) {
+            emit(event, args.payload);
+        }
         return null;
     };
 

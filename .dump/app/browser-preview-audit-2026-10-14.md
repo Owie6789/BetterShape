@@ -364,3 +364,45 @@ the documentation requirement. `eslint.config.mjs` also gained the
 `// skipcq: JS-0833` first line its sibling scripts already carry.
 The next DeepSource run on the pushed head arbitrates whether branch
 config is honored before default-branch landing.
+
+
+## Addendum 2026-10-15 (second wave on cdd0144): Sonar + DeepSource forensics
+
+DeepSource run `49a50bdd` on `cdd0144` still failed JavaScript with
+147 introduced, and the issue set was identical to the previous run,
+including JS-D1001 on arrow functions and the five JS-0833 parse
+messages. The branch `.deepsource.toml` therefore has no observable
+effect on PR analysis: neither the earlier `[[analyzers.rules]]`
+disable nor the documented `analyzers.meta` options changed a single
+issue. Per the vendor reference (fetched this session), configuration
+is dashboard-first (Settings > Code Review) and TOML can be disabled
+under Settings > Preferences; PR runs also warn that the baseline is
+inaccurate because the parent branch has no pull request of its own.
+Conclusion: the JavaScript gate cannot be turned green from the PR
+branch alone. The remaining introduced findings are JS-D1001 doc
+boilerplate, which AGENTS.md forbids adding, plus one real
+JS-R1005 complexity finding, fixed in code. The human-side action
+that matches the repo rules is to deactivate JS-D1001 (or set the
+documented skip classes) under Settings > Code Review.
+
+SonarCloud: the two PR issues were reproduced and fixed in code.
+`typescript:S3516` on `pty_available_shells` was a misread on my part:
+Sonar's flows point at `handleEventEmit` (lib/preview/tauri-mock.ts),
+whose two `return null` statements are the invariant returns. The
+open-source SonarJS rule `sonarjs/no-invariant-returns` reproduces
+the finding locally (one error at the same function) and passes after
+collapsing `handleEventEmit` to a single return point. A shell-list
+experiment built on the misreading was reverted; the mock behavior is
+unchanged. `githubactions:S7631` flagged the `actions/checkout` step
+in `preview-deploy.yml` (rule flow starts at the `workflow_run`
+trigger). The secrets job no longer checks out anything: it fetches
+`.github/vercel-cli/{package.json,package-lock.json}` from the
+default branch through the contents API and runs `npm ci` from the
+committed lockfile, so no checkout of any ref happens under
+`workflow_run`.
+
+Checkmark JS-R1005 (complexity 10): the tri-state comparisons were
+collapsing into one component. `ariaChecked` ("mixed" for
+indeterminate) and `isOn` (true or indeterminate) are now computed
+once before render; rendering behavior is unchanged (the two status
+icon branches are untouched).
