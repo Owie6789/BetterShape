@@ -433,3 +433,27 @@ still quotes the OLD `components/ui/checkmark.tsx` source (the
 pre-refactor comparisons at lines 22-26), so that run analyzed a
 cached tree or started before the push fully propagated. The
 JS-R1005 verdict needs the next run to arbitrate.
+
+
+State check on the DeepSource JavaScript gate after the Sonar fixes
+landed (run `7d626cef` on `3f56d59`): still Failed, still 147
+introduced, byte-identical issue list, including the JS-R1005 entry
+quoting the pre-refactor Checkmark source. Two separate facts follow.
+First, the run's quoted code for Checkmark predates commit `d62d631`,
+so that run did not analyze the pushed tree for this file; the next
+run arbitrates the complexity fix. Second, even a perfect JS-R1005
+fix leaves about 146 JS-D1001 findings, all "documentation comment
+not found" on functions in files this PR mostly did not touch
+(`app/welcome-screen.tsx` and friends), surfaced because DeepSource
+itself warns the baseline is inaccurate (the parent branch has no
+pull request of its own). The branch `.deepsource.toml` changed
+nothing across three runs and two documented config forms, which
+matches the vendor reference fetched this session: configuration is
+dashboard-first (Settings > Code Review) and TOML can be disabled
+under Settings > Preferences. Making the JavaScript check green
+therefore needs one human dashboard action (deactivate JS-D1001, or
+set the documented skip classes for arrows, function expressions,
+methods, and class expressions), because the in-repo alternative is
+146 restating doc comments, which AGENTS.md forbids. That decision
+belongs to the human; the PR keeps the config file so the intent is
+recorded either way.
