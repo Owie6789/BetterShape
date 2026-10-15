@@ -294,3 +294,21 @@ Three CodeAnt threads, all verified real:
    contract test covers interleaved streams. While in this code, the
    `git_branch_graph` fixture still emitted an ISO date; it now emits
    Unix seconds to match the same `GitLogEntry` contract fixed earlier.
+
+## Loop status on head 6ea2724, 2026-10-15
+
+After the third consecutive fix round, the thread audit reads 167 total,
+0 unresolved, and the bare `@codeant-ai review` tag on `6ea2724` produced
+no new threads after a full wait. SonarCloud lists exactly two open
+issues on the PR: the known `preview-deploy.yml` fork-execution
+security hotspot (human "Safe" marking in the SonarCloud UI, unchanged)
+and one maintainability item, "refactor this function to not always
+return the same value" on `pty_available_shells: () => []` in the mock.
+That constant return is the contract: no PTY exists in a browser
+preview, the handler must report an empty shell list, and the command
+is deliberately modeled. Same wontfix class as the doc-comment metric.
+CI workflow runs for this branch stop at `532f182` in the Actions list:
+the Actions API itself works (external bots post statuses on every
+push), so the gap is on the GitHub side and is recorded here rather
+than guessed at. Local gates stand in for it: Vitest 859 of 859,
+Playwright 25 of 25 including visuals, `tsc` clean, ESLint 0 errors.
