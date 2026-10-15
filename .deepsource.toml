@@ -1,0 +1,29 @@
+version = 1
+
+# Test files are analyzed as tests, not held to production rules.
+test_patterns = [
+  "tests/**",
+  "e2e/**"
+]
+
+[[analyzers]]
+name = "javascript"
+enabled = true
+
+  # JS-D1001 (documentation comment required on every function) conflicts
+  # with AGENTS.md: comments must explain a non-obvious constraint,
+  # provenance, or workaround, never restate the code. Adding boilerplate
+  # doc comments to hundreds of internal functions would lower comment
+  # quality to satisfy a metric. The exported preview surface carries
+  # real doc comments; internal helpers rely on descriptive names.
+  [[analyzers.rules]]
+  rule_id = "JS-D1001"
+  enabled = false
+
+[[analyzers]]
+name = "rust"
+enabled = true
+
+[[analyzers]]
+name = "secrets"
+enabled = true

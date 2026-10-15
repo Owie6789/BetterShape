@@ -127,6 +127,11 @@ const fileNameOf = (path: string): string => path.split("/").pop() ?? path;
 const asSeedMode = (value: string | null | undefined): PreviewSeedMode | null =>
     value === "project" || value === "welcome" ? value : null;
 
+const PREVIEW_MESSAGES = [
+    { role: "user", content: "What does this fixture do?", timestamp: Date.now() - 60_000 },
+    { role: "assistant", content: "It seeds a deterministic project so the workbench can be audited in a browser.", timestamp: Date.now() - 59_000 },
+];
+
 const previewLogEntries = () => {
     const now = Date.now();
     return [3, 2, 1].map((n) => ({
@@ -254,13 +259,14 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         }
     };
 
-    /** Backend parity for delete/trash: an open tab whose file vanished closes. */
+    /** Backend parity for delete/trash: open tabs at or under the removed path close. */
     const removePath = (path: string) => {
         if (!path) return;
         removeTree(path);
-        if (state.openFiles.some((f) => f.path === path)) {
-            state.openFiles = state.openFiles.filter((f) => f.path !== path);
-            if (state.activeFile === path) {
+        const vanished = (p: string) => p === path || p.startsWith(`${path}/`);
+        if (state.openFiles.some((f) => vanished(f.path))) {
+            state.openFiles = state.openFiles.filter((f) => !vanished(f.path));
+            if (state.activeFile && vanished(state.activeFile)) {
                 state.activeFile = state.openFiles[state.openFiles.length - 1]?.path ?? null;
             }
             emitProjectState();
@@ -516,16 +522,15 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
             title: "Preview fixture chat",
             project_path: PREVIEW_PROJECT_PATH,
             timestamp: Date.now(),
-            history: [
-                { role: "user", content: "What does this fixture do?", timestamp: Date.now() - 60_000 },
-                { role: "assistant", content: "It seeds a deterministic project so the workbench can be audited in a browser.", timestamp: Date.now() - 59_000 },
-            ],
+            history: PREVIEW_MESSAGES,
             }];
         },
-        get_conversation_messages: () => [
-            { role: "user", content: "What does this fixture do?", timestamp: Date.now() - 60_000 },
-            { role: "assistant", content: "It seeds a deterministic project so the workbench can be audited in a browser.", timestamp: Date.now() - 59_000 },
-        ],
+        get_conversation_messages: (args) => {
+            // Backend parity: messages exist only for the seeded
+            // conversation; any other ID has no history to leak into.
+            if (typeof args.id === "string" && args.id !== "preview-conversation") return [];
+            return PREVIEW_MESSAGES;
+        },
         get_chat_history: () => [],
         get_chat_title: () => "Preview fixture chat",
         get_current_conversation_id: () => "preview-conversation",

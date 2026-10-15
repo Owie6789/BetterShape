@@ -68,7 +68,9 @@ jobs:
             } catch (e) {
               core.warning(`listPullRequestsAssociatedWithCommit failed: ${e.message}`);
             }
-            let pr = prs.find((p) => p.state === "open") || prs[0];
+            // Only an open PR may deploy. Accepting a closed one here
+            // would deploy and comment on a PR nobody is reviewing.
+            const pr = prs.find((p) => p.state === "open");
             if (!pr) {
               // Fallback: match open PRs by head SHA locally. A
               // `head: owner:branch` query would need the *fork* owner's

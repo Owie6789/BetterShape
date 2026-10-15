@@ -105,6 +105,17 @@ describe("git log streaming per caller", () => {
     });
 });
 
+describe("conversation message scoping", () => {
+    it("serves messages only for the seeded conversation", () => {
+        const { handle } = createPreviewInvokeHandler("project");
+        const known = handle("get_conversation_messages", { id: "preview-conversation" }) as unknown[];
+        expect(known.length).toBeGreaterThan(0);
+        const conversations = handle("get_conversations", { projectPath: PREVIEW_PROJECT_PATH }) as Array<{ history: unknown[] }>;
+        expect(conversations[0].history).toEqual(known);
+        expect(handle("get_conversation_messages", { id: "some-other-chat" })).toEqual([]);
+    });
+});
+
 describe("file mutations", () => {
     const lsRoot = (handle: (cmd: string, args?: Record<string, unknown>) => unknown) =>
         (handle("ls_dir", { path: PREVIEW_PROJECT_PATH }) as Array<{ name: string }>).map((e) => e.name);
@@ -117,6 +128,15 @@ describe("file mutations", () => {
         const state = projectState() as { open_files: unknown[]; active_file: string | null };
         expect(state.open_files).toEqual([]);
         expect(state.active_file).toBeNull();
+    });
+
+    it("deleting a directory closes tabs on its descendants", () => {
+        const { handle, projectState } = createPreviewInvokeHandler("project");
+        handle("open_file", { path: `${PREVIEW_PROJECT_PATH}/src/App.tsx`, name: "App.tsx" });
+        handle("delete_path", { path: `${PREVIEW_PROJECT_PATH}/src` });
+        const state = projectState() as { open_files: Array<{ path: string }>; active_file: string | null };
+        expect(state.open_files.map((f) => f.path)).not.toContain(`${PREVIEW_PROJECT_PATH}/src/App.tsx`);
+        expect(state.active_file).toBe(`${PREVIEW_PROJECT_PATH}/README.md`);
     });
 
     it("rename_path moves content and retargets the open tab", () => {
