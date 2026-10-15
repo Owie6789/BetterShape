@@ -403,6 +403,12 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         if (!copy) remapOpenTabs(oldPath, newPath);
     };
 
+    /** File body for diff panes: HEAD body for staged reads, worktree body otherwise. */
+    const itemContent = (args: Record<string, unknown>): string => {
+        const key = `${PREVIEW_PROJECT_PATH}/${String(args.filePath ?? "")}`;
+        return args.staged ? (PREVIEW_HEAD_FILES[key] ?? state.files[key] ?? "") : (state.files[key] ?? "");
+    };
+
     const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
         // ── project / files ──────────────────────────────────────────────
         get_project_state: () => projectState(),
@@ -620,10 +626,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         // Diff panes read file contents through this command; serve the
         // seeded HEAD body for staged reads and the worktree body for
         // unstaged reads so the two sides are not blank or identical.
-        git_get_item_content: (args) => {
-            const key = `${PREVIEW_PROJECT_PATH}/${String(args.filePath ?? "")}`;
-            return args.staged ? (PREVIEW_HEAD_FILES[key] ?? state.files[key] ?? "") : (state.files[key] ?? "");
-        },
+        git_get_item_content: (args) => itemContent(args),
         git_file_diff: () => "diff --git a/src/App.tsx b/src/App.tsx\n+// preview fixture change\n",
         git_list_hunks: (args) => ({ path: String(args.path ?? ""), staged: false, hunks: [] }),
         git_stash_list: () => [],
