@@ -100,7 +100,7 @@ const pathBaseName = (path: string): string => path.split(/[/\\]/).pop() || path
 
 /** Absolute path for a repo-relative path, adding the separator only when missing. */
 const repoAbsolutePath = (repo: string, path: string): string =>
-    repo + (repo.endsWith('/') || repo.endsWith('\\') ? '' : '/') + path;
+    repo + (repo.endsWith('/') || repo.endsWith('\\') ? '' : repo.includes('\\') ? '\\' : '/') + path;
 
 import { confirm } from "@tauri-apps/plugin-dialog";
 

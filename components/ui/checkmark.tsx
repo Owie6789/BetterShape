@@ -16,6 +16,8 @@ export interface CheckmarkProps {
     disabled?: boolean;
     /** Accessible name for the checkbox (axe aria-toggle-field-name). */
     label?: string;
+    /** Tab-order override; pass -1 while the control is visually collapsed. */
+    tabIndex?: number;
 }
 
 /** Whether the box renders filled: checked or indeterminate. */
@@ -44,7 +46,7 @@ const CheckmarkGlyph = ({ checked }: { checked?: boolean | "indeterminate" }) =>
 
 /** Tri-state checkbox control with keyboard and screen-reader semantics. */
 export const Checkmark = React.forwardRef<HTMLDivElement, CheckmarkProps>(
-    ({ className, checked, onCheckedChange, disabled, label, ...props }, ref) => {
+    ({ className, checked, onCheckedChange, disabled, label, tabIndex, ...props }, ref) => {
         /** Flip the checked state; indeterminate counts as unchecked. */
         const toggle = () => {
             if (disabled) return;
@@ -68,7 +70,7 @@ export const Checkmark = React.forwardRef<HTMLDivElement, CheckmarkProps>(
                 role="checkbox"
                 aria-label={label ?? "Checkbox"}
                 aria-checked={ariaChecked}
-                tabIndex={disabled ? -1 : 0}
+                tabIndex={disabled ? -1 : (tabIndex ?? 0)}
                 onClick={handleClick}
                 onKeyDown={(e) => {
                     if (e.key === " " || e.key === "Enter") {

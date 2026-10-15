@@ -607,6 +607,7 @@ const ChatRowOpenButton = ({ title, variant, timestamp, meta, selecting, selecte
                 checked={selected}
                 onCheckedChange={() => onToggleSelect?.()}
                 label={`Select ${title}`}
+                tabIndex={selecting ? 0 : -1}
             />
         </span>
     </span>
