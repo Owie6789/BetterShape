@@ -245,3 +245,30 @@ rebuild. Verified real. The candidate loop now relies on
 skipped), so the exists-then-stat window is gone rather than guarded.
 Verified by serving the rebuilt export after the change: `/` and
 `/git/` return 200, a missing asset returns 404.
+
+## Review wave on head a56d310, 2026-10-15
+
+Eleven unresolved threads: eight DeepSource (seven JS-D1001 plus a
+complexity note on the edited `Checkmark` component), three CodeAnt.
+
+- JS-D1001 stays wontfix under `AGENTS.md` (comments must explain, not
+  decorate). One of the seven sits on `collectTimings` in
+  `e2e/helpers/audit.ts`, which genuinely lacked the one-line comment
+  its neighbours carry; that one line was added, the rest stand.
+- The `Checkmark` complexity note (10) predates this change: the branch
+  count comes from the tri-state rendering, and the edit adds one
+  `aria-label` attribute with no new branch. Extracting subcomponents
+  to satisfy the metric would churn a shared primitive for no behaviour
+  gain; noted as wontfix with evidence.
+- CodeAnt, `ChatRow` omits `label`: verified real. The sidebar chat
+  selector now passes `Select <title>`, so screen readers announce the
+  conversation, not a bare "Checkbox".
+- CodeAnt, `afterAll` receives `WorkerInfo`: verified false by
+  execution. Playwright passes `TestInfo` to `afterAll` (only
+  `beforeAll`/`afterAll` worker fixtures differ), and the audit suite
+  has produced `test-results/browser-audit.json` in every local run of
+  this branch, which the hook writes.
+- CodeAnt, the head re-check used `process.exit(0)`: verified real.
+  Later steps gated only on secrets would still have run. The verdict
+  is now a `stand-down` step output, and the download, stage, and
+  deploy steps all require it to not be `true`.

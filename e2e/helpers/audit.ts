@@ -69,6 +69,7 @@ export const collectIpcInventory = (page: Page) =>
         return { count: preview.invokes.length, unknown: preview.unknownCommands() };
     });
 
+/** Navigation timing snapshot (DOM content loaded / load), for trend checks. */
 export const collectTimings = (page: Page) =>
     page.evaluate(() => {
         const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;

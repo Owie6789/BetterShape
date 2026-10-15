@@ -459,6 +459,7 @@ function ChatRow({
                                             <Checkmark
                                                 checked={selected}
                                                 onCheckedChange={() => onToggleSelect?.()}
+                                                label={`Select ${title}`}
                                             />
                                         </span>
                                     </span>
