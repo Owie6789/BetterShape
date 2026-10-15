@@ -385,6 +385,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
     /** Whether a fake-tree path is a known file or directory. */
     const pathKnown = (path: string): boolean => path in state.dirs || path in state.files;
 
+    /** Whether a copy or move between two fake-tree paths can proceed. */
     const canRelocate = (oldPath: string, newPath: string): boolean => {
         if (!distinctPaths(oldPath, newPath)) return false;
         if (!pathKnown(oldPath)) return false;
