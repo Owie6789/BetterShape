@@ -71,7 +71,7 @@ jobs:
             }
             // Only an open PR may deploy. Accepting a closed one here
             // would deploy and comment on a PR nobody is reviewing.
-            const pr = prs.find((p) => p.state === "open");
+            let pr = prs.find((p) => p.state === "open");
             if (!pr) {
               // Fallback: match open PRs by head SHA locally. A
               // `head: owner:branch` query would need the *fork* owner's
@@ -262,6 +262,9 @@ jobs:
             anything unclickable, overlapping, blank, or silently broken.
 
       - name: Comment preview link on PR
+        # Never on stand-down: this run owns no current preview link,
+        # and posting its no-URL body would overwrite the newer one.
+        if: steps.head-recheck.outputs.stand-down != 'true'
         uses: actions/github-script@v7
         env:
           PR_NUMBER: ${{ needs.resolve-pr.outputs.pr-number }}
