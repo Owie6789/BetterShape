@@ -250,7 +250,7 @@ describe("backend-parity state transitions", () => {
         handle("close_file", { path: "/tmp/b.ts" });
         expect(activeOf()).toBe("/tmp/a.ts");
         handle("close_file", { path: "/tmp/a.ts" });
-        expect(activeOf()).toBe(PREVIEW_PROJECT_PATH + "/README.md");
+        expect(activeOf()).toBe(`${PREVIEW_PROJECT_PATH}/README.md`);
     });
 });
 

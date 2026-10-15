@@ -28,6 +28,10 @@ const isFilled = (checked: boolean | "indeterminate" | undefined): boolean =>
 const fillClass = (isOn: boolean): string =>
     isOn ? "bg-accent border-accent text-accent-fg" : "hover:border-border hover:bg-panel-hover";
 
+/** Tab index for the box: disabled or caller-collapsed boxes leave the tab order. */
+const boxTabIndex = (disabled: boolean | undefined, tabIndex: number | undefined): number =>
+    disabled ? -1 : (tabIndex ?? 0);
+
 /** Check or dash glyph for the current state. */
 const CheckmarkGlyph = ({ checked }: { checked?: boolean | "indeterminate" }) => (
     <>
@@ -70,7 +74,7 @@ export const Checkmark = React.forwardRef<HTMLDivElement, CheckmarkProps>(
                 role="checkbox"
                 aria-label={label ?? "Checkbox"}
                 aria-checked={ariaChecked}
-                tabIndex={disabled ? -1 : (tabIndex ?? 0)}
+                tabIndex={boxTabIndex(disabled, tabIndex)}
                 onClick={handleClick}
                 onKeyDown={(e) => {
                     if (e.key === " " || e.key === "Enter") {
