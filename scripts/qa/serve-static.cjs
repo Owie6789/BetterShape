@@ -11,7 +11,7 @@
  * Usage: npm run build:preview && npm run preview:browser
  */
 const { createServer } = require("node:http");
-const { createReadStream, existsSync, realpathSync, statSync } = require("node:fs");
+const { createReadStream, existsSync, lstatSync, realpathSync, statSync } = require("node:fs");
 const { extname, join, normalize, sep } = require("node:path");
 
 const root = join(__dirname, "..", "..", "out");
@@ -19,6 +19,12 @@ const root = join(__dirname, "..", "..", "out");
 // realpathSync throws ENOENT and hides the build instruction below.
 if (!existsSync(join(root, "index.html"))) {
     process.stderr.write("[preview:browser] out/index.html not found. Run `npm run build:preview` first.\n");
+    process.exit(1);
+}
+// The containment checks below trust realRoot. A symlinked out/ would move
+// that trust root outside the repo, so refuse to serve through one.
+if (lstatSync(root).isSymbolicLink()) {
+    process.stderr.write("[preview:browser] out/ is a symlink; refusing to serve an export outside the repo.\n");
     process.exit(1);
 }
 const realRoot = realpathSync(root);
