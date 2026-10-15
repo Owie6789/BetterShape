@@ -406,3 +406,30 @@ collapsing into one component. `ariaChecked` ("mixed" for
 indeterminate) and `isOn` (true or indeterminate) are now computed
 once before render; rendering behavior is unchanged (the two status
 icon branches are untouched).
+
+
+Correction to the Sonar note above: the shipped analyzer
+reference confirms the S3516 fix location precisely. The finding
+flagged `handleEventEmit` in `lib/preview/tauri-mock.ts` (Sonar's two
+flow locations are the two `return null` statements). The
+`pty_available_shells` line in my earlier wave notes was the mock's
+own handler, not the flagged function; the shell-platform experiment
+built on that misreading was reverted before landing, and the mock
+behavior is unchanged. The S3516 fix that landed collapses
+`handleEventEmit` to a single return point, validated locally with
+`sonarjs/no-invariant-returns` (zero findings on the patched file,
+one on the baseline).
+
+CI state after this wave, with hard evidence: the manual dispatch
+attempt returned HTTP 403 "Resource not accessible by integration"
+from GitHub, and the actions-permissions API returns 403 for this
+token. No workflow run exists for any head after `532f182`. The
+token cannot create runs; enabling Actions runs on new heads is a
+repository-settings action for the human (Settings > Actions >
+General).
+
+One more wart on the DeepSource side: the run page for `d62d631`
+still quotes the OLD `components/ui/checkmark.tsx` source (the
+pre-refactor comparisons at lines 22-26), so that run analyzed a
+cached tree or started before the push fully propagated. The
+JS-R1005 verdict needs the next run to arbitrate.
