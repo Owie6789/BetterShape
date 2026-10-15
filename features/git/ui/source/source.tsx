@@ -2663,6 +2663,8 @@ const Source = ({
     const repoKey = `${project_path ?? ""}\n${scmRepoPath ?? ""}`;
     useResetStatusOnRepoChange(repoKey, () => {
         setChanges([]);
+        setRemotes([]);
+        setEditingRemote(null);
         setCurrentBranch("...");
         setHasRemote(false);
         setLastCommit(null);

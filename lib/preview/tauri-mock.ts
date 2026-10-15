@@ -92,6 +92,27 @@ const PREVIEW_DIRS: Record<string, Array<{ name: string; is_dir: boolean }>> = {
     ],
 };
 
+/**
+ * Committed (HEAD) bodies of the two seeded modified files. The diff view
+ * asks for staged (index) and unstaged (worktree) contents separately;
+ * without a distinct HEAD body both sides would render identical.
+ */
+const PREVIEW_HEAD_FILES: Record<string, string> = {
+    [`${PREVIEW_PROJECT_PATH}/README.md`]: [
+        "# bettershape-demo (preview fixture)",
+        "",
+        "This project does not exist on disk. It is seeded by",
+        "the preview mock so the workbench can be exercised.",
+        "",
+    ].join("\n"),
+    [`${PREVIEW_PROJECT_PATH}/src/App.tsx`]: [
+        "export default function App() {",
+        '    return <main className="app">Hello</main>;',
+        "}",
+        "",
+    ].join("\n"),
+};
+
 /** Static plugin-command results (event listen/emit handled in fallback). */
 export const PLUGIN_RESULTS: Record<string, unknown> = {
     "plugin:app|version": "1.0.3-preview",
@@ -597,9 +618,12 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         }),
         git_diff: () => "diff --git a/src/App.tsx b/src/App.tsx\n+// preview fixture change\n",
         // Diff panes read file contents through this command; serve the
-        // seeded file body so the unstaged side is not blank in preview.
-        git_get_item_content: (args) =>
-            state.files[`${PREVIEW_PROJECT_PATH}/${String(args.filePath ?? "")}`] ?? "",
+        // seeded HEAD body for staged reads and the worktree body for
+        // unstaged reads so the two sides are not blank or identical.
+        git_get_item_content: (args) => {
+            const key = `${PREVIEW_PROJECT_PATH}/${String(args.filePath ?? "")}`;
+            return args.staged ? (PREVIEW_HEAD_FILES[key] ?? state.files[key] ?? "") : (state.files[key] ?? "");
+        },
         git_file_diff: () => "diff --git a/src/App.tsx b/src/App.tsx\n+// preview fixture change\n",
         git_list_hunks: (args) => ({ path: String(args.path ?? ""), staged: false, hunks: [] }),
         git_stash_list: () => [],
