@@ -1873,7 +1873,7 @@ const ChangeList = ({
             isOpen={isChangesOpen}
             onToggleOpen={() => setIsChangesOpen(!isChangesOpen)}
             isAllStaged={false}
-            isSomeStaged={unstagedChanges.some(c => c.staged)}
+            isSomeStaged={false}
             onToggleStage={handleToggleAllChanges}
             onRefresh={refresh}
             onShowDiff={handleShowDiff}
