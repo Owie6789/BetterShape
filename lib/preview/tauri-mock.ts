@@ -406,7 +406,8 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
     /** File body for diff panes: HEAD body for staged reads, worktree body otherwise. */
     const itemContent = (args: Record<string, unknown>): string => {
         const key = `${PREVIEW_PROJECT_PATH}/${String(args.filePath ?? "")}`;
-        return args.staged ? (PREVIEW_HEAD_FILES[key] ?? state.files[key] ?? "") : (state.files[key] ?? "");
+        const worktree = state.files[key] ?? "";
+        return args.staged ? (PREVIEW_HEAD_FILES[key] ?? worktree) : worktree;
     };
 
     const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
