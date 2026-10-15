@@ -64,7 +64,7 @@ Reason if yes: <explain the applicable criterion>
 - CodeAnt comment link and head SHA: <link and SHA>
 - CodeRabbit comment link and head SHA, for substantially critical PRs only: <link and SHA, or not requested>
 
-Post each required tag as a separate PR comment containing only the tag. After each push or fix round, request review again and record the new comment link and head SHA here. For a substantially critical PR, add the CodeRabbit tag to this section and post it as a separate comment. Do not request CodeRabbit manually for other PRs. Automatic CodeRabbit reviews for PRs targeting `main` remain active and must complete before reporting the PR ready.
+Post each required tag as a separate PR comment containing only the tag. After each push or fix round, request review again and record the new comment link and head SHA here. For a substantially critical PR, add the CodeRabbit tag to this section and post it as a separate comment. Do not request CodeRabbit manually for other PRs. Automatic CodeRabbit reviews for non-draft PRs targeting `main` remain active and must complete before reporting the PR ready; drafts are excluded by `.coderabbit.yaml`.
 
 ## Checklist
 

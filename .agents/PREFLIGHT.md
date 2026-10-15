@@ -28,8 +28,8 @@ If you changed Rust, also run:
 - [ ] I posted a standalone `@codeant-ai review` comment and recorded its link and head SHA.
 - [ ] I set `Substantially critical` to Yes or No and gave a reason when Yes.
 - [ ] If the PR is substantially critical, I included and posted `@coderabbitai review` and recorded its link and head SHA.
-- [ ] If the PR is not substantially critical, I did not manually request CodeRabbit. Automatic reviews for PRs targeting `main` still run and must finish before reporting the PR ready.
-- [ ] Before reporting ready, I confirmed CodeAnt approved the current head, all applicable CodeRabbit reviews completed (manual for substantially critical PRs and automatic for PRs targeting `main`), required checks passed, no review thread remains unresolved, and the ten-minute quiet window passed.
+- [ ] If the PR is not substantially critical, I did not manually request CodeRabbit. Automatic reviews for non-draft PRs targeting `main` still run and must finish before reporting the PR ready; drafts are excluded.
+- [ ] Before reporting ready, I confirmed CodeAnt approved the current head, all applicable CodeRabbit reviews completed (manual for substantially critical PRs and automatic for non-draft PRs targeting `main`), required checks passed, no review thread remains unresolved, and the ten-minute quiet window passed.
 
 A PR is substantially critical if it changes a public contract in a breaking way, fixes a security issue, changes major architecture or protocol, makes a new platform support claim, or materially changes repository policy or workflows.
 

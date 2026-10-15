@@ -105,7 +105,7 @@ Triggers on `pull_request_target` when a PR opens, is edited, synchronized, or r
 
 - Requires the PR body to include the required sections, completed Verification Gate and Code Research Gate fields, `npm run test:all`, the CodeAnt tag, a Yes or No criticality classification, and the current 40-character head SHA.
 - Fails closed when GitHub's pull-request files API returns its 3,000-file maximum, because additional changed paths may be omitted and cannot be classified reliably.
-- Treats repository policy, workflow, shared action, release-script, and `lefthook.yml` changes as substantially critical. Critical PRs must include the CodeRabbit body tag. Other PRs must omit it. Automatic CodeRabbit reviews for PRs targeting `main` remain separate.
+- Treats repository policy, workflow, shared action, release-script, and `lefthook.yml` changes as substantially critical. Critical PRs must include the CodeRabbit body tag. Other PRs must omit it. Automatic CodeRabbit reviews for non-draft PRs targeting `main` remain separate; drafts are excluded by `.coderabbit.yaml`.
 - Requests only `pull-requests: read`. It reads changed file names and does not check out or run PR code.
 - The workflow checks body text, not whether review comments were posted. Contributors still post the required standalone bot comments and record their links and head SHA.
 - `PR Policy Check` is separate from `CI Success`; repository branch protection must require this status directly for policy failures to block merging.

@@ -143,7 +143,7 @@ Use this workflow whenever a task ends in a pull request, when creating or handl
 5. Open the pull request. Write the description as the structural rules below require. Tag the required review bots as described.
 6. Watch CI and review together. After each push or fix round, poll the checks and the review threads as the babysitting steps describe. Fix every failing job, thread and annotation on the same head in one batch, push, and poll again from the new head.
 7. Wait for quiet. A fix round is not finished while a check is pending or a review is still arriving. After the last push, wait at least ten minutes. Keep polling through that window, and do not report to the human until it passes with no new review and no new failure.
-8. Report once. Return to the human with the pull request link only when all of these hold on the same head: every required check is green, CodeAnt has approved that head, all applicable CodeRabbit reviews are complete (manual for substantially critical PRs and automatic for every PR targeting `main`), no review thread is unresolved, and the ten-minute quiet window passed with no new review. Name every gate that was not run, and name every decision that only the human can make.
+8. Report once. Return to the human with the pull request link only when all of these hold on the same head: every required check is green, CodeAnt has approved that head, all applicable CodeRabbit reviews are complete (manual for substantially critical PRs and automatic for every non-draft PR targeting `main`), no review thread is unresolved, and the ten-minute quiet window passed with no new review. Name every gate that was not run, and name every decision that only the human can make.
 
 ## How to structure a Pull Request description
 
@@ -184,7 +184,7 @@ You own the quality of the PR until it is merged or closed. Polling continues in
 7. When a GitHub request returns HTTP 403 or 429, back off for 30, 60 and then 120 seconds before you retry.
 8. Fix every failing log, thread and annotation on the same head in one batch. Read the failing job logs through `gh run view <run-id> --log-failed`.
 9. Push, then poll again from step 1 on the new head. Do not resolve a thread unless its fix is on the new head. Reply with the head SHA when you resolve.
-10. Stop only after a continuous ten-minute quiet window and several consecutive polls on the same head show: all required checks pass, CodeAnt approves that head, all applicable CodeRabbit reviews are complete (manual for substantially critical PRs and automatic for every PR targeting `main`), no review thread is unresolved, and no new bot comment reopens work.
+10. Stop only after a continuous ten-minute quiet window and several consecutive polls on the same head show: all required checks pass, CodeAnt approves that head, all applicable CodeRabbit reviews are complete (manual for substantially critical PRs and automatic for every non-draft PR targeting `main`), no review thread is unresolved, and no new bot comment reopens work.
 
 Report to the human when the PR is ready, or when a decision only the human can make blocks it.
 
@@ -233,7 +233,7 @@ Install skills only with `npx skills add <owner>/<repo> -s <skill> -a universal 
 - Skill discovery in `lib/chat/skill-roots.ts` reads `.claude/skills`, `.agents/skills`, `.github/skills` and `.bettershape/skills`. In this repository `.claude/skills` and `.agents/skills` resolve to the same folder, so each vendored skill is listed twice, and the `.agents/skills` row is shadowed. That is expected until the scanner de-duplicates by real path.
 - `docs/` is the Mintlify product documentation, and `scripts/build/docs-index.mjs` indexes every file under it. Internal engineering documents belong in `engineering/`, `.dump/` or the root, never in `docs/`.
 - The CI jobs on every pull request are `Lint & Typecheck`, `Test JS (Vitest)`, `Static Checks (macOS)`, `Test Rust (Cargo)`, `Rust Lints (fmt, clippy)`, `Build Next.js`, `Version Sync Check`, `Security Audit` and `CI Success`. `Dependency Review`, `CodeQL` and `Zizmor` run from `security.yml`. `PR Title Lint` and `Check Large Files & Secrets` run from `pr.yml`. `PR Policy Check` runs from `pr-policy.yml` using `pull_request_target` and the default-branch workflow definition. It is a separate status, not part of `CI Success`; branch protection must require it directly for body policy failures to block merging. The workflow does not run until it is present on the default branch.
-- CodeRabbit auto-reviews every PR whose base is `main` (`auto_review.base_branches` in `.coderabbit.yaml`); wait for that automatic review to complete, whether or not the PR is substantially critical. For other bases, request a manual CodeRabbit review only when the PR is substantially critical; otherwise, keep the review loop on CodeAnt.
+- CodeRabbit auto-reviews non-draft PRs whose base is `main` (`auto_review.base_branches` and `drafts: false` in `.coderabbit.yaml`). Wait for that automatic review to complete, whether or not the PR is substantially critical. Draft PRs are excluded. For other bases, request a manual CodeRabbit review only when the PR is substantially critical; otherwise, keep the review loop on CodeAnt.
 
 ## Do not
 
@@ -257,9 +257,9 @@ PR bot tagging (MANDATORY)
 - Put `@codeant-ai review` in every PR body and post one separate PR comment containing only that tag.
 - For substantially critical PRs, put `@coderabbitai review` in the PR body and post one separate PR comment containing only that tag. A substantially critical PR includes a breaking change, a security fix, a major architecture or protocol change, a new platform support claim, or a repo policy or workflow change that materially affects future work.
 - After each push or fix round, post the CodeAnt tag again. For a substantially critical PR, post the CodeRabbit tag again too.
-- For non-critical PRs, do not request CodeRabbit manually and keep the review loop on CodeAnt; still wait for the automatic CodeRabbit review when the PR targets `main`.
+- For non-critical PRs, do not request CodeRabbit manually and keep the review loop on CodeAnt; still wait for the automatic CodeRabbit review when the non-draft PR targets `main`.
 - Record each review comment link and the head SHA in the PR body.
-- Do not consider a PR ready until CodeAnt has approved the head, all applicable CodeRabbit reviews have completed (manual for substantially critical PRs and automatic for PRs targeting `main`), and all required checks are green.
+- Do not consider a PR ready until CodeAnt has approved the head, all applicable CodeRabbit reviews have completed (manual for substantially critical PRs and automatic for non-draft PRs targeting `main`), and all required checks are green.
 
 ## Repo preferences
 
