@@ -153,7 +153,7 @@ export function QuickPick({
                                             "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm",
                                             index === selected
                                                 ? "bg-panel-hover text-text-primary"
-                                                : "text-text-secondary hover:bg-panel-hover/60",
+                                                : "text-text-secondary hover:bg-[var(--row-hover)]",
                                         )}
                                     >
                                         {item.iconNode ? (

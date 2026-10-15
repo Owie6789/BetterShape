@@ -96,7 +96,7 @@ function displayUrl(url: string) {
 /**
  * The page frame browses arbitrary origins with its real origin intact
  * (`allow-same-origin`), so host messages are pinned to the origin the frame is
- * on right now — read live, so redirects and in-page navigation stay in sync.
+ * on right now, read live, so redirects and in-page navigation stay in sync.
  */
 function frameOrigin(frame: HTMLIFrameElement | null | undefined): string {
     try {
@@ -138,7 +138,6 @@ export function steerFrame(
     }
 }
 
-// ---------------------------------------------------------------------------
 // Tab strip
 
 function TabChip({
@@ -174,10 +173,10 @@ function TabChip({
             }}
             className={cn(
                 "group/tab flex h-7 min-w-0 max-w-44 flex-1 cursor-default select-none items-center gap-1.5 rounded-lg pl-2 pr-1 text-xs",
-                "transition-colors duration-[var(--transition-fast)] ease-[var(--ease-out)]",
+                "transition-colors duration-[var(--spring-tap-dur)] ease-[var(--spring-tap)]",
                 active
                     ? "bg-surface-2 text-text-primary"
-                    : "text-text-muted hover:bg-panel-hover hover:text-text-secondary",
+                    : "text-text-muted hover:bg-[var(--row-hover)] hover:text-text-secondary",
             )}
         >
             <span className="flex size-3.5 shrink-0 items-center justify-center">
@@ -216,7 +215,6 @@ function TabChip({
     );
 }
 
-// ---------------------------------------------------------------------------
 // URL bar with suggestions
 
 type Suggestion =
@@ -381,7 +379,7 @@ function UrlBar({
                                 onClick={() => commit(item.url)}
                                 className={cn(
                                     "flex h-7 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-xs",
-                                    "transition-colors duration-[var(--transition-fast)] ease-[var(--ease-out)]",
+                                    "transition-colors duration-[var(--spring-tap-dur)] ease-[var(--spring-tap)]",
                                     active ? "bg-panel-hover text-text-primary" : "text-text-secondary",
                                 )}
                             >
@@ -415,7 +413,6 @@ function UrlBar({
     );
 }
 
-// ---------------------------------------------------------------------------
 // Page stage: the streamed frame plus input forwarding
 
 function PageStage({
@@ -633,7 +630,6 @@ function PageStage({
     );
 }
 
-// ---------------------------------------------------------------------------
 // Error and new-tab pages
 
 function ErrorPage({ tab }: { tab: BrowserTab }) {
@@ -697,7 +693,7 @@ function NewTabPage({
                                 onClick={() => onUseTool(tool.kind)}
                                 className={cn(
                                     "flex h-10 min-w-0 items-center gap-2 rounded-lg bg-surface-1 px-2.5 text-left",
-                                    "transition-colors duration-[var(--transition-fast)] ease-[var(--ease-out)] hover:bg-panel-hover",
+                                    "transition-colors duration-[var(--spring-tap-dur)] ease-[var(--spring-tap)] hover:bg-[var(--row-hover)]",
                                 )}
                             >
                                 <Icon icon={iconFor(tool.kind)} className="text-text-muted" />
@@ -723,7 +719,7 @@ function NewTabPage({
                             onClick={() => onOpen(entry.url)}
                             className={cn(
                                 "flex min-w-0 flex-col items-start gap-1 rounded-lg bg-surface-1 px-2.5 py-2 text-left",
-                                "transition-colors duration-[var(--transition-fast)] ease-[var(--ease-out)] hover:bg-panel-hover",
+                                "transition-colors duration-[var(--spring-tap-dur)] ease-[var(--spring-tap)] hover:bg-[var(--row-hover)]",
                             )}
                         >
                             <Favicon url={entry.url} size={14} />
@@ -739,7 +735,6 @@ function NewTabPage({
     );
 }
 
-// ---------------------------------------------------------------------------
 // Browser view
 
 type PageTab = {
@@ -1120,7 +1115,7 @@ export function BrowserView({
                         onClick={() => setPicking((v) => !v)}
                         className={cn(
                             "flex size-7 shrink-0 items-center justify-center rounded text-text-muted",
-                            "hover:bg-panel-hover hover:text-text-primary disabled:pointer-events-none disabled:opacity-30",
+                            "hover:bg-[var(--btn-hover)] hover:text-text-primary disabled:pointer-events-none disabled:opacity-30",
                             picking && "bg-panel-active text-accent",
                         )}
                     >
@@ -1131,7 +1126,7 @@ export function BrowserView({
                     <DropdownMenuTrigger asChild>
                         <button
                             type="button"
-                            className="flex size-7 shrink-0 items-center justify-center rounded text-text-muted hover:bg-panel-hover hover:text-text-primary data-[state=open]:bg-panel-hover data-[state=open]:text-text-primary"
+                            className="flex size-7 shrink-0 items-center justify-center rounded text-text-muted hover:bg-[var(--btn-hover)] hover:text-text-primary data-[state=open]:bg-panel-hover data-[state=open]:text-text-primary"
                             aria-label="Developer tools"
                         >
                             <Icon icon={Code20Regular} />
@@ -1227,7 +1222,7 @@ export function BrowserView({
                                 key={b.url}
                                 type="button"
                                 onClick={() => submitUrl(b.url)}
-                                className="flex h-6 max-w-40 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs text-text-secondary hover:bg-panel-hover hover:text-text-primary"
+                                className="flex h-6 max-w-40 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs text-text-secondary hover:bg-[var(--btn-hover)] hover:text-text-primary"
                             >
                                 <Favicon url={b.url} size={12} />
                                 <span className="truncate">{b.title || hostnameOf(b.url)}</span>

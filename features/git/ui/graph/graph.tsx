@@ -191,7 +191,7 @@ export default function Graph({
         } catch {
             if (gen === streamGenRef.current) setGitLogs([]);
         } finally {
-            // Always pair start/stop — skipping on gen mismatch left the bar stuck forever.
+            // Always pair start/stop, skipping on gen mismatch left the bar stuck forever.
             if (track) stopLoading();
         }
     }, [gitRepo, showAllBranches, startLoading, stopLoading, appendLogs]);
@@ -288,7 +288,7 @@ export default function Graph({
     // Pre-compute cumulative top offsets once. Only changes when expand state or file count changes.
     const authors = useMemo(() => {
         const set = new Set<string>();
-        // Cap scan + options — author dropdown doesn't need every unique name from 8k commits.
+        // Cap scan + options, author dropdown doesn't need every unique name from 8k commits.
         const limit = Math.min(gitLogs.length, 2_000);
         for (let i = 0; i < limit; i++) {
             const a = gitLogs[i].author?.trim();
@@ -299,7 +299,7 @@ export default function Graph({
     }, [gitLogs]);
 
 
-    /** Match predicate — used to mute rows, not drop them (preserves lane topology). */
+    /** Match predicate, used to mute rows, not drop them (preserves lane topology). */
     const commitMatchesFilter = useCallback((log: GitLogEntry) => {
         const q = (rich ? (deferredLocalSearch || deferredCommitSearch) : deferredCommitSearch).trim().toLowerCase();
         if (authorFilter !== "all" && log.author.trim() !== authorFilter) return false;
@@ -585,7 +585,7 @@ export default function Graph({
 
             if (!inThisGraph && !inTitlebarSearch) return;
             if (inField && !inGraphSearch && !inTitlebarSearch) return;
-            // Titlebar search is shared — only steal keys while Git Graph is the active manager surface.
+            // Titlebar search is shared, only steal keys while Git Graph is the active manager surface.
             if (inTitlebarSearch && !rich) return;
 
             const isNav =
@@ -865,12 +865,12 @@ export default function Graph({
                 actions={
                     <>
                     <Tooltip content="Go to HEAD (H)">
-                        <Button variant="ghost" size="icon" className="text-text-primary hover:bg-panel-hover" onClick={jumpToHead}>
+                        <Button variant="ghost" size="icon" className="text-text-primary hover:bg-[var(--btn-hover)]" onClick={jumpToHead}>
                             <Icon icon={Target20Regular} />
                         </Button>
                     </Tooltip>
                     <Tooltip content="Fetch From All Remotes">
-                        <Button variant="ghost" size="icon" className="text-text-primary hover:bg-panel-hover" onClick={async () => {
+                        <Button variant="ghost" size="icon" className="text-text-primary hover:bg-[var(--btn-hover)]" onClick={async () => {
                             if (!gitRepo) return;
                             startLoading();
                             try {
@@ -884,7 +884,7 @@ export default function Graph({
                         </Button>
                     </Tooltip>
                     <Tooltip content="Pull">
-                        <Button variant="ghost" size="icon" className="text-text-primary hover:bg-panel-hover" onClick={async () => {
+                        <Button variant="ghost" size="icon" className="text-text-primary hover:bg-[var(--btn-hover)]" onClick={async () => {
                             if (!gitRepo) return;
                             startLoading();
                             try {
@@ -898,7 +898,7 @@ export default function Graph({
                         </Button>
                     </Tooltip>
                     <Tooltip content="Push">
-                        <Button variant="ghost" size="icon" className="text-text-primary hover:bg-panel-hover" onClick={async () => {
+                        <Button variant="ghost" size="icon" className="text-text-primary hover:bg-[var(--btn-hover)]" onClick={async () => {
                             if (!gitRepo) return;
                             startLoading();
                             try {
@@ -912,7 +912,7 @@ export default function Graph({
                         </Button>
                     </Tooltip>
                     <Tooltip content="Refresh Graph">
-                        <Button variant="ghost" size="icon" className="text-text-primary hover:bg-panel-hover" onClick={() => void refresh()}>
+                        <Button variant="ghost" size="icon" className="text-text-primary hover:bg-[var(--btn-hover)]" onClick={() => void refresh()}>
                             <Icon icon={ArrowSync20Regular} />
                         </Button>
                     </Tooltip>
@@ -973,7 +973,7 @@ export default function Graph({
                             flexible: true,
                             minSize: 360,
                             preferredSize: 640,
-                            // Main graph canvas — flush like Actions content, not a workbench card.
+                            // Main graph canvas, flush like Actions content, not a workbench card.
                             children: (
                                 <div className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
                                     {graphChrome}

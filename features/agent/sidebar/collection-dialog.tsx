@@ -157,7 +157,7 @@ export function CollectionDialog({
                                     aria-pressed={icon === id}
                                     onClick={() => setIcon(id)}
                                     className={cn(
-                                        "flex h-9 items-center justify-center rounded-md hover:bg-panel-hover",
+                                        "flex h-9 items-center justify-center rounded-md hover:bg-[var(--btn-hover)]",
                                         icon === id && "bg-panel-active",
                                     )}
                                 >
@@ -193,7 +193,7 @@ export function CollectionDialog({
                         <button
                             type="button"
                             onClick={() => setStep((value) => value - 1)}
-                            className="h-8 rounded-md px-3 text-sm text-text-muted hover:bg-panel-hover hover:text-text-primary"
+                            className="h-8 rounded-md px-3 text-sm text-text-muted hover:bg-[var(--btn-hover)] hover:text-text-primary"
                         >
                             Back
                         </button>

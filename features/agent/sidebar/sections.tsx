@@ -1,20 +1,12 @@
 "use client";
 
 /**
- * The session list's shelves.
+ * The session list's shelves, one per state a chat can be in: pinned, working, or the chat
+ * on screen. Every section derives from data BetterShape already tracks, so a shelf needs
+ * nothing persisted to exist.
  *
- * A flat list cannot say "which of these is running" and "which one am I looking
- * at" without the user reading every row. t3code solves that with labelled
- * sections; the concepts port over, its Effect/server architecture does not.
- * Every section here is derived from data BetterShape already tracks — the pinned
- * set, the generating set, and the chat on screen — so nothing new has to be
- * persisted to make one exist.
- *
- * Rows are emitted as a FLAT child list with the headers interleaved, not wrapped
- * one section per element. That is load-bearing: a chat moving between shelves has
- * to stay a child of the same element so React can move the node, and the only
- * thing allowed to decide whether it moves or is torn down and rebuilt is the
- * variant baked into the key.
+ * Rows stay in a flat child list with headers interleaved, because a chat moving between
+ * shelves has to remain a child of the same element for React to move the node.
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -80,13 +72,8 @@ export const SORT_OPTIONS: { value: ChatSort; label: string }[] = [
 ];
 
 /**
- * List order inside one shelf.
- *
- * Pin used to lead this comparator, which turned newest-first into a tiebreak
- * within the pinned block and quietly overrode the sort menu for everything else.
- * Shelves now own the pin split, so the sort choice is the whole answer. The id
- * tiebreak keeps equal-timestamped rows from swapping between two otherwise
- * identical renders, which is what makes a reorder animate instead of flicker.
+ * Shelves own the pin split, so the sort choice is the whole answer. The id tiebreak keeps
+ * equal-timestamped rows from swapping, which is what makes a reorder animate.
  */
 export const sortShelf = (chats: readonly Conversation[], sort: ChatSort): Conversation[] => {
     const nameSign = sort === "name-desc" ? -1 : 1;
@@ -116,13 +103,8 @@ export interface ChatShelfSpec {
 }
 
 /**
- * Precedence, top to bottom.
- *
- * t3code orders snoozed → settled → pinned → active. There is no snooze here and
- * its "settled" is the far end of this list, so only its pinned-over-active
- * precedence survives. Pinned is an instruction the user gave by hand and wins;
- * working outranks active because a chat mid-generation is the one row on screen
- * that is still changing.
+ * Pinned wins because it is an instruction the user gave by hand, and working outranks
+ * active because a chat mid-generation is the one row still changing.
  */
 export const CHAT_SHELVES: readonly ChatShelfSpec[] = [
     { id: "pinned", label: "Pinned", variant: "card" },
@@ -204,18 +186,9 @@ export interface ChatShelfRow {
 export type ChatShelfChild = ChatShelfHeader | ChatShelfRow;
 
 /**
- * Headers and rows as one flat sequence.
- *
- * The variant in `key` is the whole point. Two rows in the same variant key the
- * same, so React moves the existing node and a chat hopping between the settled
- * and working shelves slides. Crossing into the pinned card changes height, and
- * there the key changes too: React tears the row down, the motion layer fades the
- * old box out and the new one in, and the height change reads as a crossfade
- * rather than a jump.
- *
- * With a single section there are no headers at all, which is what keeps the
- * common case — one chat, nothing pinned, nothing running — looking like the flat
- * list it replaced.
+ * Headers and rows as one flat sequence. The variant in `key` is the point: same variant
+ * keys the same, so React moves the node and the row slides, while crossing into the
+ * pinned card changes the key and the height change crossfades instead of jumping.
  */
 export const buildShelfChildren = (
     sections: readonly ChatShelfSection[],
@@ -343,7 +316,7 @@ const ChatActionsTrigger = () => (
             <button
                 type="button"
                 aria-label="Chat actions"
-                className="flex size-6 items-center justify-center rounded-md text-text-muted hover:bg-panel-active hover:text-text-primary"
+                className="flex size-6 items-center justify-center rounded-md text-text-muted transition-colors duration-[var(--spring-tap-dur)] ease-[var(--spring-tap)] hover:bg-[var(--btn-hover)] hover:text-text-primary"
             >
                 <Icon icon={MoreHorizontal20Regular} className="icon-sm" />
             </button>
@@ -374,7 +347,7 @@ const ChatRowActionMenus = ({ pinned, color, actions, chooseColor, addToCollecti
                     type="button"
                     aria-label="Pin"
                     onClick={() => onTogglePin(true)}
-                    className="flex size-6 items-center justify-center rounded-md text-text-muted hover:bg-panel-active hover:text-text-primary"
+                    className="flex size-6 items-center justify-center rounded-md text-text-muted transition-colors duration-[var(--spring-tap-dur)] ease-[var(--spring-tap)] hover:bg-[var(--btn-hover)] hover:text-text-primary"
                 >
                     <Icon icon={Pin20Regular} className="icon-sm" />
                 </button>
@@ -420,8 +393,8 @@ const ChatRowSubagents = ({ id, color, subagents, onOpen }: {
                     className={cn(
                         "flex h-8 items-center gap-2 pr-2 pl-7 text-left text-sm text-text-secondary",
                         color
-                            ? "hover:bg-[color-mix(in_oklch,var(--chat-tint)_16%,transparent)] hover:text-text-primary"
-                            : "hover:bg-panel-hover hover:text-text-primary",
+                            ? "hover:bg-[color-mix(in_oklch,var(--chat-tint)_4%,transparent)] hover:text-text-primary"
+                            : "transition-colors duration-[var(--spring-tap-dur)] ease-[var(--spring-tap)] hover:bg-[var(--row-hover)] hover:text-text-primary",
                     )}
                 >
                     <span className={cn("size-1.5 shrink-0 rounded-full", nestedDot(card.status))} aria-hidden />
@@ -528,7 +501,7 @@ const ChatRowSubagentToggle = ({ nestedCount, expanded, setExpanded }: {
         <Icon
             icon={ChevronRight20Regular}
             className={cn(
-                "icon-sm transition-transform duration-[var(--transition-fast)] ease-[var(--ease-out)]",
+                "icon-sm transition-transform duration-[var(--spring-tap-dur)] ease-[var(--spring-tap)]",
                 expanded && "rotate-90",
             )}
         />
@@ -552,7 +525,7 @@ const ChatRowTrailingActions = ({ generating, unread, pinned, nestedCount, expan
     <>
         <ChatRowStatusDots generating={generating} unread={unread} />
         <span className="flex shrink-0 items-center">
-            <span className="grid grid-cols-[0fr] overflow-hidden transition-[grid-template-columns] duration-150 ease-[var(--ease-out)] group-hover/chat:grid-cols-[1fr] group-has-[[data-state=open]]/chat:grid-cols-[1fr]">
+            <span className="grid grid-cols-[0fr] overflow-hidden transition-[grid-template-columns] duration-[var(--spring-tap-dur)] ease-[var(--spring-tap)] group-hover/chat:grid-cols-[1fr] group-has-[[data-state=open]]/chat:grid-cols-[1fr]">
             <span className="flex min-w-0 overflow-hidden">
             <ChatRowActionMenus
                 pinned={pinned}
@@ -598,7 +571,7 @@ const ChatRowOpenButton = ({ title, variant, timestamp, meta, selecting, selecte
         >
     <span
         className={cn(
-            "grid shrink-0 transition-[grid-template-columns,opacity,margin] duration-200 ease-[var(--ease-out)]",
+            "grid shrink-0 transition-[grid-template-columns,opacity,margin] duration-[var(--spring-tap-dur)] ease-[var(--spring-tap)]",
             selecting ? "mr-1 grid-cols-[14px] opacity-100" : "grid-cols-[0px] opacity-0",
         )}
     >
@@ -638,9 +611,15 @@ const ChatRowOpenButton = ({ title, variant, timestamp, meta, selecting, selecte
     );
 };
 
-/** Hover and active classes for an uncoloured row. */
+/**
+ * The row ladder for an uncoloured row. These two used to be the same fill, so a row could
+ * not answer the question a hover exists for and a selected row went inert.
+ */
 const uncolouredChromeClass = (color: ChatColor | null, active: boolean): string | false =>
-    !color && (active ? "bg-panel-hover text-text-primary" : "text-text-primary hover:bg-panel-hover");
+    !color &&
+    (active
+        ? "bg-[var(--row-selected)] text-text-primary hover:bg-[var(--row-selected-hover)]"
+        : "text-text-primary hover:bg-[var(--row-hover)]");
 
 /** Row chrome classes: card height, uncoloured squircle/hover states, coloured hover wash. */
 const rowChromeClass = (variant: RowVariant, color: ChatColor | null, active: boolean): string =>
@@ -648,9 +627,9 @@ const rowChromeClass = (variant: RowVariant, color: ChatColor | null, active: bo
         "group/chat relative flex w-full items-center gap-1 px-2 text-sm",
         variant === "card" ? "h-[78px] py-2" : "h-10",
         !color && "squircle-2xl",
-        "transition-colors duration-[var(--transition-fast)] ease-[var(--ease-out)]",
+        "transition-colors duration-[var(--spring-tap-dur)] ease-[var(--spring-tap)]",
         uncolouredChromeClass(color, active),
-        color && "text-text-primary hover:bg-[color-mix(in_oklch,var(--chat-tint)_12%,transparent)]",
+        color && "text-text-primary hover:bg-[color-mix(in_oklch,var(--chat-tint)_4%,transparent)]",
     );
 
 /** Outer tint classes for a coloured row; the active tint stacks stronger. */
@@ -735,9 +714,7 @@ const ChatRow = ({
         setRenaming(true);
     };
 
-    // The row overrides `startRename` with its own so Rename is guaranteed to
-    // target a row that is on screen; everything else is shared with the
-    // selection menu in the header.
+    // `startRename` is the row's own so Rename always targets a row on screen.
     const actions = buildChatLifecycleActions(
         [{ id, title, path, pinned }],
         { ...handlers, startRename },
@@ -841,12 +818,12 @@ const ShelfHeader = ({
             data-shelf-header={shelf}
             aria-expanded={open}
             onClick={() => onToggle(shelf)}
-            className="flex h-6 w-full items-center gap-1 rounded-md pr-2 pl-1 text-xs font-medium text-text-muted transition-colors duration-[var(--transition-fast)] ease-[var(--ease-out)] hover:bg-panel-hover hover:text-text-secondary"
+            className="flex h-6 w-full items-center gap-1 rounded-md pr-2 pl-1 text-xs font-medium text-text-muted transition-colors duration-[var(--spring-tap-dur)] ease-[var(--spring-tap)] hover:bg-[var(--row-hover)] hover:text-text-secondary"
         >
             <Icon
                 icon={ChevronDown20Regular}
                 className={cn(
-                    "icon-sm transition-transform duration-200 ease-[var(--ease-out)]",
+                    "icon-sm transition-transform duration-[var(--spring-flick-dur)] ease-[var(--spring-flick)]",
                     !open && "-rotate-90",
                 )}
             />

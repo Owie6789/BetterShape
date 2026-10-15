@@ -72,7 +72,7 @@ export function useShiftHeld(): boolean {
     return held;
 }
 
-/** Hidden until the row is hovered, focused, or Shift is held — never display:none, so Tab still reaches it. */
+/** Hidden until the row is hovered, focused, or Shift is held, never display:none, so Tab still reaches it. */
 const REVEAL = "opacity-0 pointer-events-none";
 const REVEALED = "opacity-100 pointer-events-auto";
 
@@ -116,7 +116,7 @@ export function PrRowActions({
                     title={PR_ACTION_LABEL[action]}
                     disabled={busy !== null}
                     onClick={() => void run(action)}
-                    className="flex size-7 items-center justify-center rounded-md text-text-muted hover:bg-panel-hover hover:text-text-primary disabled:opacity-50"
+                    className="flex size-7 items-center justify-center rounded-md text-text-muted hover:bg-[var(--btn-hover)] hover:text-text-primary disabled:opacity-50"
                 >
                     <Icon icon={ACTION_ICON[action]} />
                 </button>
@@ -126,7 +126,7 @@ export function PrRowActions({
                     <button
                         type="button"
                         aria-label={`Actions for #${item.number}`}
-                        className="flex size-7 items-center justify-center rounded-md text-text-muted hover:bg-panel-hover hover:text-text-primary"
+                        className="flex size-7 items-center justify-center rounded-md text-text-muted hover:bg-[var(--btn-hover)] hover:text-text-primary"
                     >
                         <Icon icon={MoreHorizontal20Regular} />
                     </button>

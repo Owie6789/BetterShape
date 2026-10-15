@@ -25,7 +25,7 @@ const OFF_PREVIEW_ORIGIN = "https://preview.bettershape.invalid";
 
 /**
  * The canvas keeps its real origin (`allow-same-origin`), so host messages are
- * pinned to a loopback preview origin — the only place the design bridge is ever
+ * pinned to a loopback preview origin, the only place the design bridge is ever
  * injected (design_bridge.rs `wrap_iframe_only`). A canvas that has navigated
  * anywhere else matches nothing and receives no project path, and a loopback
  * canvas that moved port still works because the live origin wins.
@@ -180,7 +180,7 @@ export function DesignInspectOverlay({
                 <button
                     type="button"
                     onClick={onToggle}
-                    className="mr-0.5 flex size-7 items-center justify-center rounded-full text-text-muted hover:bg-panel-hover hover:text-text-primary"
+                    className="mr-0.5 flex size-7 items-center justify-center rounded-full text-text-muted hover:bg-[var(--btn-hover)] hover:text-text-primary"
                     aria-label="Exit design mode"
                 >
                     ←
