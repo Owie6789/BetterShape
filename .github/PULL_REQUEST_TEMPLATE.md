@@ -25,9 +25,9 @@ Replace the zero placeholder with the current 40-character hexadecimal PR head S
 - `npm run test:all`: <passed, failed, or not run with reason>
 - `npm run test:rust`: <passed, failed, or not applicable>
 - `npm run skills:verify`: <passed, failed, or not run with reason>
-- Rust formatting and clippy, when Rust changed: <passed, failed, not run with reason, not applicable; or fmt: passed; clippy: passed>
+- Rust formatting and clippy, when Rust changed: <one combined status: passed, failed, not run with reason, or not applicable; or both fmt: passed; clippy: passed>
 
-For separate Rust results, include both `fmt:` and `clippy:` statuses. Every `Not run` result needs its own reason.
+Use either one combined status (`passed`, `failed`, `not run with reason`, or `not applicable`) or both `fmt:` and `clippy:` statuses. Every `Not run` result needs its own reason.
 
 Use the head SHA from the run. A result from an earlier edit does not verify this head.
 
@@ -64,7 +64,7 @@ Reason if yes: <explain the applicable criterion>
 - CodeAnt comment link and head SHA: <link and SHA>
 - CodeRabbit comment link and head SHA, for substantially critical PRs only: <link and SHA, or not requested>
 
-Post each required tag as a separate PR comment containing only the tag. After each push or fix round, request review again and record the new comment link and head SHA here. For a substantially critical PR, add the CodeRabbit tag to this section and post it as a separate comment. Do not request CodeRabbit for other PRs.
+Post each required tag as a separate PR comment containing only the tag. After each push or fix round, request review again and record the new comment link and head SHA here. For a substantially critical PR, add the CodeRabbit tag to this section and post it as a separate comment. Do not request CodeRabbit manually for other PRs. Automatic CodeRabbit reviews for PRs targeting `main` remain active and must complete before reporting the PR ready.
 
 ## Checklist
 
