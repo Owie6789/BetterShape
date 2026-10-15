@@ -12,6 +12,7 @@ alwaysApply: true
 - Request `@codeant-ai review` on every PR.
 - Request `@coderabbitai review` only for a substantially critical change. That includes a breaking change, security fix, major architecture or protocol change, new platform support claim, or repository policy or workflow change that materially affects future work.
 - CodeRabbit automatically reviews PRs whose base is `main`. For other bases, keep routine reviews on CodeAnt.
+- `PR Policy Check` runs from the trusted default-branch workflow definition and is separate from `CI Success`. Require it directly in branch protection; it does not run until the workflow is present on the default branch.
 - After each push, request reviews again on the new head. Fix findings and repeat until required CI checks are green, CodeAnt approves the head, and any requested CodeRabbit review is complete.
 - Run `npm run test:all` before you say the work is done.
 - Read `AGENTS.md`. If `COMMIT.md` exists locally, follow it for commit wording.

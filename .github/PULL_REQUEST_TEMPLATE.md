@@ -12,9 +12,9 @@ Describe what this change does, why it is needed, and which part of the reposito
 
 </details>
 
-## Verification gate
+## Verification Gate
 
-Head SHA: `<head SHA>`
+Head SHA: `PASTE_40_CHAR_HEAD_SHA_HERE`
 
 - `npm ci`: <passed, failed, or not run with reason>
 - `npm run lint`: <passed, failed, or not run with reason>
@@ -27,7 +27,7 @@ Head SHA: `<head SHA>`
 
 Use the head SHA from the run. A result from an earlier edit does not verify this head.
 
-## Code research gate
+## Code Research Gate
 
 <details>
 <summary>Research notes</summary>
@@ -70,4 +70,4 @@ Post each required tag as a separate PR comment containing only the tag. After e
 
 ## Footer
 
-BetterShape-Agent | Filed by `<model slug or platform name>`, with `@<verified GitHub username>`, on `<YYYY-MM-DD>`
+BetterShape-Agent | Filed by <model slug or platform name>, with @<verified GitHub username>, on <YYYY-MM-DD>

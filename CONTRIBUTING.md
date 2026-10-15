@@ -43,7 +43,9 @@ Request CodeAnt review on every PR. Request CodeRabbit only for substantially cr
 
 CodeRabbit also reviews PRs targeting `main` automatically. For other bases, request it only when the change meets one of the critical criteria.
 
-CI runs `npm run test:all`. Address CodeAnt feedback, any CodeRabbit feedback, and required CI failures before merge.
+Run `npm run test:all` locally before pushing. CI runs Vitest and Cargo in separate jobs. Address CodeAnt feedback, any CodeRabbit feedback, and required CI failures before merge.
+
+The `PR Policy Check` is a separate `pull_request_target` status, not part of `CI Success`. Maintainers must require `PR Policy Check` directly in branch protection once the workflow is present on the default branch.
 
 - One concern per PR
 - Say what you changed and how you checked it

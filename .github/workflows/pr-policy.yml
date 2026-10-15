@@ -1,7 +1,9 @@
 name: PR Policy Check
 
+# This trusted metadata-only check uses the default-branch workflow definition.
+# Require the PR Policy Check status directly in repository branch protection.
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, edited, synchronize, reopened]
 
 permissions:
@@ -18,7 +20,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Validate PR body and review policy
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
             const pullRequest = context.payload.pull_request;
@@ -42,6 +44,49 @@ jobs:
               errors.push(`PR body is missing required content: ${missing.join(', ')}`);
             }
 
+            const verificationFields = [
+              ['npm ci', /^-\s*`npm ci`:\s*(.*)$/gim],
+              ['npm run lint', /^-\s*`npm run lint`:\s*(.*)$/gim],
+              ['npx tsc --noEmit', /^-\s*`npx tsc --noEmit`:\s*(.*)$/gim],
+              ['npm run build:runtime', /^-\s*`npm run build:runtime`:\s*(.*)$/gim],
+              ['npm run test:all', /^-\s*`npm run test:all`:\s*(.*)$/gim],
+              ['npm run test:rust', /^-\s*`npm run test:rust`:\s*(.*)$/gim],
+              ['npm run skills:verify', /^-\s*`npm run skills:verify`:\s*(.*)$/gim],
+              ['Rust formatting and clippy', /^-\s*Rust formatting and clippy, when Rust changed:\s*(.*)$/gim],
+            ];
+            for (const [label, pattern] of verificationFields) {
+              const matches = [...body.matchAll(pattern)];
+              const value = matches[0]?.[1]?.trim() ?? '';
+              const result = value.match(/^(passed|pass|failed|fail|not run|not complete|not applicable)\b\s*[:.,;—-]?\s*(.*)$/i);
+              const status = result?.[1]?.toLowerCase();
+              const details = result?.[2]?.trim() ?? '';
+              const needsReason = status === 'not run' || status === 'not complete';
+              if (matches.length !== 1 || !result || (needsReason && !details)) {
+                errors.push(`Record exactly one completed ${label} result; include a reason when it was not run or is incomplete.`);
+              }
+            }
+
+            const researchFields = [
+              ['Queries searched', /^-\s*Queries searched:\s*(.*)$/gim],
+              ['Sources', /^-\s*Sources:\s*(.*)$/gim],
+              ['Edge cases considered', /^-\s*Edge cases considered:\s*(.*)$/gim],
+              ['Failed attempts', /^-\s*Failed attempts:\s*(.*)$/gim],
+            ];
+            const isUnfilledResearchValue = (label, value) => {
+              const trimmed = value.trim();
+              if (!trimmed) return true;
+              if (/^<(?:queries?(?: searched)?|sources|edge cases?(?: considered)?|failed attempts)>$/i.test(trimmed)) return true;
+              if (/^(?:todo|tbd|n\/?a|not applicable|placeholder|fill(?: this)? in|replace me)(?:\b|[.!])$/i.test(trimmed)) return true;
+              return label !== 'Failed attempts' && /^none\b/i.test(trimmed);
+            };
+            for (const [label, pattern] of researchFields) {
+              const matches = [...body.matchAll(pattern)];
+              const value = matches[0]?.[1] ?? '';
+              if (matches.length !== 1 || isUnfilledResearchValue(label, value)) {
+                errors.push(`Complete the ${label} field in the Code Research Gate instead of leaving its template placeholder.`);
+              }
+            }
+
             const headShaMatches = [...body.matchAll(/^Head SHA:\s*`?([0-9a-f]{40})`?\s*$/gim)];
             const declaredHeadSha = headShaMatches[0]?.[1]?.toLowerCase();
             if (headShaMatches.length !== 1 || declaredHeadSha !== pullRequest.head.sha.toLowerCase()) {
@@ -61,11 +106,13 @@ jobs:
             });
             const policyPaths = [
               /^\.github\/workflows\//,
+              /^\.github\/actions\//,
               /^\.cursor\/rules\//,
-              /^(?:AGENTS\.md|CONTRIBUTING\.md|REVIEW\.md|FULL-REVIEW\.md)$/,
+              /^(?:AGENTS\.md|CONTRIBUTING\.md|REVIEW\.md|FULL-REVIEW\.md|lefthook\.yml)$/,
               /^\.agents\/PREFLIGHT\.md$/,
               /^\.github\/(?:PULL_REQUEST_TEMPLATE\.md|WORKFLOWS_README\.md|CODEOWNERS)$/,
               /^\.coderabbit\.yaml$/,
+              /^scripts\/release\//,
               /^docs\/developing\/ci-cd\.mdx$/,
             ];
             const criticalFiles = new Set(

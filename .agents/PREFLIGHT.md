@@ -23,6 +23,7 @@ If you changed Rust, also run:
 
 - [ ] Work is on a focused branch, not `main`.
 - [ ] The PR base matches the branch's inherited base.
+- [ ] I confirmed `PR Policy Check` is required directly by branch protection, or noted the maintainer action needed to configure it. The workflow must be present on the default branch before GitHub runs it.
 - [ ] The PR body includes `@codeant-ai review`.
 - [ ] I posted a standalone `@codeant-ai review` comment and recorded its link and head SHA.
 - [ ] I set `Substantially critical` to Yes or No and gave a reason when Yes.

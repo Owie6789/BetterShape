@@ -48,11 +48,12 @@ Concurrency: `release-${ref}` cancel-in-progress false (never cancel release).
 
 ## PR policy check: `pr-policy.yml`
 
-- Runs when a PR opens, is edited, receives a new head, or reopens.
-- Checks the required PR sections, `npm run test:all`, the CodeAnt body tag, a Yes or No criticality classification, and that the recorded 40-character head SHA matches the current PR head.
-- Marks repository policy and workflow changes as critical from the changed file list. Critical PRs must include the CodeRabbit body tag; other PRs must omit it. Automatic CodeRabbit reviews for PRs targeting `main` remain separate.
-- Uses `pull-requests: read` and does not check out or execute PR code.
-- The check validates PR body content. Contributors still post the required standalone bot comments and record their links and head SHA.
+- Triggers on `pull_request_target` when a PR opens, is edited, receives a new head, or reopens. GitHub runs the trusted workflow definition from the repository's default branch; this workflow must be present there before the check can run. A PR that introduces the workflow does not activate its own check.
+- Checks the required PR sections and completed Verification Gate and Code Research Gate fields, the CodeAnt body tag, a Yes or No criticality classification, and that the recorded 40-character head SHA matches the current PR head.
+- Marks workflow and policy changes, shared GitHub Actions, release scripts, `lefthook.yml`, and documented policy files as critical. Critical PRs must include the CodeRabbit body tag; other PRs must omit it. Automatic CodeRabbit reviews for PRs targeting `main` remain separate.
+- Uses only `pull-requests: read`; it does not check out or execute PR code.
+- The check validates PR body content, not standalone bot comments. Contributors still post the required comments and record their links and head SHA.
+- `PR Policy Check` is a separate status, not part of `CI Success`. Branch protection must require it directly for failures to block merging.
 
 ## Composite Setup (`.github/actions/setup`)
 
@@ -84,7 +85,7 @@ cargo fmt --check     → rust-lints
 cargo clippy -D warnings → rust-lints
 npm run build         → build
 npm run sync-version  → version-sync
-npm run test:all      → release test
+npm run test:all      → local aggregate (CI runs Vitest and Cargo separately)
 ```
 
 ## Adding a new workflow
