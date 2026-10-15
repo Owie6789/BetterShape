@@ -93,7 +93,7 @@ Two connection styles. Pick one, or you will get duplicate deployments:
   GitHub App connects the repo; `vercel.json` supplies the build, every
   PR gets a preview deployment and Vercel's own PR comment, and no
   GitHub secrets are needed. In this mode do not add the `VERCEL_*`
-  secrets below (the workflow deploy step stays skipped; the Playwright
+  secrets below (the `preview-deploy.yml` deploy step stays skipped; the Playwright
   gate and artifacts still run).
 - **GitHub Actions deploy:** add `VERCEL_TOKEN` (Vercel → Settings →
   Tokens), `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID` (the last two are in

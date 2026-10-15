@@ -261,9 +261,9 @@ function ChangeSection({
             </div>
             {isOpen && (
                 <div className="space-y-0.5 mt-1">
-                    {files.slice(0, 400).map((file, i) => (
+                    {files.slice(0, 400).map((file) => (
                         <ChangeRow
-                            key={`${title}-${file.path}-${file.staged ? "s" : "u"}-${i}`}
+                            key={`${title}-${file.path}-${file.staged ? "s" : "u"}`}
                             file={file}
                             projectPath={projectPath}
                             onRefresh={onRefresh}
@@ -497,8 +497,23 @@ export default function Source({
         }
     };
 
+    const handleSync = async () => {
+        if (!gitRepo) return;
+        startLoading();
+        try {
+            await commands.gitSync(gitRepo);
+            notify.info("Git Sync", "Successfully synced with remote.");
+            setNeedsSync(false);
+            await refresh({ track: false });
+        } catch (err) {
+            notify.gitError(err, "Sync failed");
+        } finally {
+            stopLoading();
+        }
+    };
+
     const handleCommit = async (
-        all: boolean = false,
+        all = false,
         opts?: { amend?: boolean; promptSyncAfter?: boolean },
     ) => {
         if (!gitRepo || !commitTitle) {
@@ -640,21 +655,6 @@ export default function Source({
             await refresh({ track: false });
         } catch (err) {
             notify.gitError(err, "Push failed");
-        } finally {
-            stopLoading();
-        }
-    };
-
-    const handleSync = async () => {
-        if (!gitRepo) return;
-        startLoading();
-        try {
-            await commands.gitSync(gitRepo);
-            notify.info("Git Sync", "Successfully synced with remote.");
-            setNeedsSync(false);
-            await refresh({ track: false });
-        } catch (err) {
-            notify.gitError(err, "Sync failed");
         } finally {
             stopLoading();
         }
