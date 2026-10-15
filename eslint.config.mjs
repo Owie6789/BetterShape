@@ -81,7 +81,6 @@ const eslintConfig = defineConfig([
     // Coverage
     "coverage/**",
   ]),
-  { rules: { "react-hooks/set-state-in-effect": "warn", "react-hooks/refs": "warn" } },
   {
     // Node tooling scripts; the Next.js config never defines the React hooks
     // plugin for .cjs files, so its hook rules must be off there rather than
