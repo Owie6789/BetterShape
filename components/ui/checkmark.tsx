@@ -22,7 +22,7 @@ export const Checkmark = React.forwardRef<HTMLDivElement, CheckmarkProps>(
     ({ className, checked, onCheckedChange, disabled, label, ...props }, ref) => {
         const toggle = () => {
             if (disabled) return;
-            const nextChecked = checked === true ? false : true;
+            const nextChecked = checked !== true;
             onCheckedChange?.(nextChecked);
         };
 
@@ -53,8 +53,9 @@ export const Checkmark = React.forwardRef<HTMLDivElement, CheckmarkProps>(
                     "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-md border border-border-subtle bg-panel-hover cursor-pointer overflow-hidden",
                     "transition-colors duration-[var(--transition-fast)] ease-[var(--ease-out)]",
                     "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-border-focus",
-                    isOn && "bg-accent border-accent text-accent-fg",
-                    !checked && "hover:border-border hover:bg-panel-hover",
+                    isOn
+                        ? "bg-accent border-accent text-accent-fg"
+                        : "hover:border-border hover:bg-panel-hover",
                     disabled && "cursor-not-allowed opacity-50",
                     className
                 )}
