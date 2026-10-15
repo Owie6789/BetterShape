@@ -2,6 +2,7 @@
   "name": "bettershape",
   "version": "1.0.3",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev -p 48921",
     "dev:webpack": "next dev --webpack -p 48921",

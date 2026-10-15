@@ -457,3 +457,37 @@ methods, and class expressions), because the in-repo alternative is
 146 restating doc comments, which AGENTS.md forbids. That decision
 belongs to the human; the PR keeps the config file so the intent is
 recorded either way.
+
+
+## Addendum 2026-10-15 (third wave): JS-0833 parse alerts and module type
+
+The five JS-0833 "Parsing error" alerts (eslint.config.mjs and
+scripts/qa/*.mjs) persisted unchanged across every run since
+`.deepsource.toml` gained the documented `module_system` option,
+which settles it: DeepSource does not apply branch TOML to PR
+analysis (its reference documents dashboard-first configuration,
+with TOML disable-able under Settings > Preferences). The repo-side
+fix that does not depend on their settings: declare the package
+ESM with `"type": "module"` in package.json, so their parser stops
+defaulting the `.mjs` entry points to CommonJS. The codebase had no
+CommonJS files to break (every config is .mjs or TypeScript), but
+three latent `__dirname`/`require` uses were relying on CommonJS
+treatment and were converted honestly: `e2e/audit.spec.ts` and
+`playwright.config.ts` now derive `__dirname` from `import.meta.url`
+(playwright.config.ts also builds `require` through
+`createRequire`), and `vitest.config.ts` resolves the `@` alias the
+same way. Full local gates after the change: tsc clean, Vitest 861
+passed, Playwright 25/25, build:preview written, lint 0 errors.
+
+Also closed this wave, each verified on the live run
+`1a482d46` (head `f2fa938`): the three DeepSource majors in
+`features/git/ui/source/source.tsx` (JS-0437 index key, JS-0331
+inferred boolean, JS-0357 handleSync ordering) took the count
+147 to 144, and the stronger Checkmark branch reduction took it
+to 143 with JS-R1005 gone from the list. The remainder is JS-D1001
+doc-comment boilerplate on code this PR mostly did not touch,
+behind DeepSource's own inaccurate-baseline warning, plus the five
+JS-0833 alerts above. Both clear only through the dashboard:
+deactivate JS-D1001 (or set its documented skip classes) under
+Settings > Code Review, and enable `.deepsource.toml` under
+Settings > Preferences if the repo wants file-based config.

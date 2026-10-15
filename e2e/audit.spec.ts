@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { test, expect, expectPreviewActive, gotoRoute, ROUTES } from "./fixtures";
 import {
     assertA11yWithinBaseline,
@@ -11,6 +12,8 @@ import {
     type A11yBaseline,
     type RouteAudit,
 } from "./helpers/audit";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const a11yBaseline = JSON.parse(
     readFileSync(join(__dirname, "a11y-baseline.json"), "utf8"),

@@ -1,5 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const require = createRequire(import.meta.url);
+const __dirname = dirname(fileURLToPath(import.meta.url));
 import { defineConfig } from "@playwright/test";
 
 /**
