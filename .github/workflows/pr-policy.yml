@@ -54,14 +54,24 @@ jobs:
               ['npm run skills:verify', /^-\s*`npm run skills:verify`:\s*(.*)$/gim],
               ['Rust formatting and clippy', /^-\s*Rust formatting and clippy, when Rust changed:\s*(.*)$/gim],
             ];
+            const resultPattern = /^(passed|pass|failed|fail|not run|not complete|not applicable)\b\s*[:.,;—-]?\s*(.*)$/i;
+            const hasResult = (status, details) => {
+              const normalizedStatus = status.toLowerCase();
+              return !['not run', 'not complete'].includes(normalizedStatus) || details.trim().length > 0;
+            };
             for (const [label, pattern] of verificationFields) {
               const matches = [...body.matchAll(pattern)];
               const value = matches[0]?.[1]?.trim() ?? '';
-              const result = value.match(/^(passed|pass|failed|fail|not run|not complete|not applicable)\b\s*[:.,;—-]?\s*(.*)$/i);
-              const status = result?.[1]?.toLowerCase();
-              const details = result?.[2]?.trim() ?? '';
-              const needsReason = status === 'not run' || status === 'not complete';
-              if (matches.length !== 1 || !result || (needsReason && !details)) {
+              const result = value.match(resultPattern);
+              let validResult = result && hasResult(result[1], result[2] ?? '');
+
+              if (label === 'Rust formatting and clippy' && !validResult) {
+                const fmt = value.match(/(?:^|[;,]\s*)(?:fmt|formatting):\s*(passed|pass|failed|fail|not run|not complete|not applicable)\b([^;,]*)/i);
+                const clippy = value.match(/(?:^|[;,]\s*)clippy:\s*(passed|pass|failed|fail|not run|not complete|not applicable)\b([^;,]*)/i);
+                validResult = fmt && clippy && hasResult(fmt[1], fmt[2] ?? '') && hasResult(clippy[1], clippy[2] ?? '');
+              }
+
+              if (matches.length !== 1 || !validResult) {
                 errors.push(`Record exactly one completed ${label} result; include a reason when it was not run or is incomplete.`);
               }
             }
@@ -72,6 +82,7 @@ jobs:
               ['Edge cases considered', /^-\s*Edge cases considered:\s*(.*)$/gim],
               ['Failed attempts', /^-\s*Failed attempts:\s*(.*)$/gim],
             ];
+            // Queries, sources, and edge cases must document actual work; only Failed attempts may be None.
             const isUnfilledResearchValue = (label, value) => {
               const trimmed = value.trim();
               if (!trimmed) return true;
@@ -104,6 +115,11 @@ jobs:
               pull_number: pullRequest.number,
               per_page: 100,
             });
+            const maxListableFiles = 3000;
+            if (files.length >= maxListableFiles) {
+              errors.push(`GitHub caps changed-file metadata at ${maxListableFiles} files; split this PR so policy-file classification is complete.`);
+            }
+
             const policyPaths = [
               /^\.github\/workflows\//,
               /^\.github\/actions\//,

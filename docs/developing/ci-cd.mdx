@@ -104,6 +104,7 @@ Triggers: PR opened, edited, synchronized, or reopened.
 Triggers on `pull_request_target` when a PR opens, is edited, synchronized, or reopened. GitHub uses the workflow definition from the repository's default branch; this check becomes available only after the workflow is present there.
 
 - Requires the PR body to include the required sections, completed Verification Gate and Code Research Gate fields, `npm run test:all`, the CodeAnt tag, a Yes or No criticality classification, and the current 40-character head SHA.
+- Fails closed when GitHub's changed-file API reaches its 3,000-file cap, so truncated file lists cannot bypass critical-path classification.
 - Treats repository policy, workflow, shared action, release-script, and `lefthook.yml` changes as substantially critical. Critical PRs must include the CodeRabbit body tag. Other PRs must omit it. Automatic CodeRabbit reviews for PRs targeting `main` remain separate.
 - Requests only `pull-requests: read`. It reads changed file names and does not check out or run PR code.
 - The workflow checks body text, not whether review comments were posted. Contributors still post the required standalone bot comments and record their links and head SHA.

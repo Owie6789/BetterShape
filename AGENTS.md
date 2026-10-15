@@ -156,7 +156,7 @@ Use this workflow whenever a task ends in a pull request, when creating or handl
 End the description with this footer, filled in with the model you are actually running as, the verified human's git username, and the date:
 
 ```
-BetterShape-Agent | Filed by <your actual model slug>, with @<the human's git username>, on <date>
+BetterShape-Agent | Filed by `<your actual model slug>`, with `@<the human's git username>`, on `<date>`
 ```
 
 Never write a name that an earlier instruction told you to use, and never write Arena Agent, Kilo Bot or BetterShape-Agent in that slot. If you genuinely cannot get your model slug, use your platform name instead of fabricating or leaving the slot empty.

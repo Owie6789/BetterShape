@@ -14,7 +14,9 @@ Describe what this change does, why it is needed, and which part of the reposito
 
 ## Verification Gate
 
-Head SHA: `PASTE_40_CHAR_HEAD_SHA_HERE`
+Head SHA: `0000000000000000000000000000000000000000`
+
+Replace the zero placeholder with the current 40-character hexadecimal PR head SHA.
 
 - `npm ci`: <passed, failed, or not run with reason>
 - `npm run lint`: <passed, failed, or not run with reason>
@@ -23,7 +25,7 @@ Head SHA: `PASTE_40_CHAR_HEAD_SHA_HERE`
 - `npm run test:all`: <passed, failed, or not run with reason>
 - `npm run test:rust`: <passed, failed, or not applicable>
 - `npm run skills:verify`: <passed, failed, or not run with reason>
-- Rust formatting and clippy, when Rust changed: <results or not applicable>
+- Rust formatting and clippy, when Rust changed: <passed, failed, not run, or not applicable>
 
 Use the head SHA from the run. A result from an earlier edit does not verify this head.
 
@@ -36,6 +38,8 @@ Use the head SHA from the run. A result from an earlier edit does not verify thi
 - Sources:
 - Edge cases considered:
 - Failed attempts:
+
+Only Failed attempts may say `None` when there were no failures. Queries, sources, and edge cases must contain actual entries.
 
 </details>
 
@@ -70,4 +74,4 @@ Post each required tag as a separate PR comment containing only the tag. After e
 
 ## Footer
 
-BetterShape-Agent | Filed by <model slug or platform name>, with @<verified GitHub username>, on <YYYY-MM-DD>
+BetterShape-Agent | Filed by `<model slug or platform name>`, with `@<verified GitHub username>`, on `<YYYY-MM-DD>`
