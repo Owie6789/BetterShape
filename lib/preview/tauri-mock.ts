@@ -101,7 +101,6 @@ export const PLUGIN_RESULTS: Record<string, unknown> = {
     "plugin:store|keys": [],
     "plugin:store|entries": [],
     "plugin:store|length": 0,
-    "plugin:dialog|open": null,
     "plugin:dialog|save": null,
     "plugin:dialog|message": "Ok",
     "plugin:dialog|confirm": false,
@@ -117,6 +116,7 @@ export const PLUGIN_RESULTS: Record<string, unknown> = {
  */
 export const MODELED_PLUGIN_COMMANDS = [
     ...Object.keys(PLUGIN_RESULTS),
+    "plugin:dialog|open",
     "plugin:event|listen",
     "plugin:event|emit",
     "plugin:event|unlisten",
@@ -695,7 +695,18 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
     };
 
     /** Answer plugin commands that have no stateful preview handler. */
+    /**
+     * What a native open dialog returns in the preview: the demo project
+     * for folder picks, a seeded file for file picks. Returning the project
+     * keeps the welcome screen's Browse flow usable without a real dialog.
+     */
+    const dialogOpenResult = (args: Record<string, unknown>): string => {
+        const options = (args.options ?? {}) as { directory?: boolean };
+        return options.directory ? PREVIEW_PROJECT_PATH : `${PREVIEW_PROJECT_PATH}/README.md`;
+    };
+
     const pluginFallback = (cmd: string, args: Record<string, unknown>): unknown => {
+        if (cmd === "plugin:dialog|open") return dialogOpenResult(args);
         // Event plugin: `listen` never reaches here, handle() returns the
         // tracked subscription id first. `emit` goes through the tracked
         // listeners so delivery matches listen/unlisten bookkeeping.
