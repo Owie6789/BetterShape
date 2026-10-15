@@ -58,6 +58,11 @@ describe("preview invoke handler", () => {
         const log = handle("git_log", { path: PREVIEW_PROJECT_PATH }) as Array<{ hash: string }>;
         expect(log.length).toBeGreaterThan(0);
         expect(log[0].hash).toContain("preview");
+        // Status codes must match the Rust backend (single letters); the Git
+        // UI keys colors and glyphs off them and renders the code itself.
+        const status = handle("git_status", { path: PREVIEW_PROJECT_PATH }) as Array<{ status: string }>;
+        expect(status.length).toBeGreaterThan(0);
+        for (const file of status) expect(file.status).toMatch(/^[MACDUR?!]$/);
     });
 
     it("never throws for unmocked commands, safe defaults by shape", () => {

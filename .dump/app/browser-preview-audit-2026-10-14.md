@@ -506,3 +506,53 @@ Repo-side options are exhausted: branch TOML (two documented
 forms), package type, and per-file skipcq all show zero effect
 across six runs. The five alerts and the JS-D1001 bulk both clear
 only in Settings > Code Review / Settings > Preferences.
+
+
+Addendum 2026-10-15: five CodeAnt nitpicks pasted by the user, all
+five verified against code and dependencies before any edit.
+1) preview-deploy.yml mark-stale: the append-once guard
+(`!existing.body.includes("Latest preview build")`) froze the first
+failure note forever; the job now replaces the stale note (split on
+the note prefix, keep the base comment, append the fresh note, skip
+the write when unchanged).
+2) e2e/audit.spec.ts: consoleErrors from e2e/fixtures.ts (benign
+DevTools/Fast Refresh/favicon filtered, requestfailed included) were
+report-only. The prior test-results/browser-audit.json shows 0
+console and 0 page errors on all five routes, so the audit now asserts
+consoleErrors empty next to the existing pageErrors assertion.
+3) e2e/settings.spec.ts: getByText("Editor").first() matches the
+inert group heading div in features/settings/ui/settings.tsx (group
+labels render as plain divs; leaves render as buttons that set
+activeLeafId and conditionally mount the panel). ProvidersSettingsView
+contains SettingSwitch controls, so the switch-visible assertion
+false-passed on a no-op click. The spec now clicks the leaf button
+inside #bettershape-settings nav and asserts the Editor-only
+#settings-editor-font section mounts. Verified three ways: HEAD
+version passes (baseline), new version passes, negative control
+(old selector with the new Editor-only assertion) fails.
+4) lib/preview/tauri-mock.ts git_status returned full words
+("modified"); the Rust backend src-tauri/src/commands/git/mod.rs
+emits single letters ("A"/"M"/"D"/"R"/"C") and
+features/git/ui/source/source.tsx keys colors off those letters and
+renders the code itself. Mock now returns "M" entries, and
+tests/preview asserts every seeded status is a single-letter code.
+5) scripts/qa/serve-static.mjs ran realpathSync(root) before the
+missing-out/index.html check, so a fresh checkout threw ENOENT
+instead of the documented build instruction. The existence check now
+runs first; verified by hiding out/ (prints the instruction, exit 1)
+and restoring it.
+
+Mistake recorded: the first settings patch (a python rewrite) split
+the "a switch control toggles" test at the first closing of its body
+and dropped the toggle assertions; caught by reading the diff before
+running anything, restored from HEAD, suite re-run. The patch script
+also carried a stray unrelated string replacement against
+preview-deploy.yml from a clipboard mix-up; git showed the file
+unmodified (the garbage target strings never matched), the workflow
+change was then made deliberately and reviewed.
+
+Verification on this wave: tsc clean, Vitest 861 passed / 106 files
+(tests/preview 23/23 incl. the new status-code assertion), Playwright
+full suite 25/25 (settings 3/3 new version, audit 5/5 with the new
+console gate), eslint on touched files clean, serve-static negative
+check above, workflow YAML parses.

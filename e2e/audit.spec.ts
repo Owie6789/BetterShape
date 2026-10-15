@@ -79,6 +79,12 @@ test.describe("@audit route crawl", () => {
         });
 
         expect(pageErrors, `${route.name}: uncaught page errors`).toEqual([]);
+        // Console errors are a gate too, not report-only data. The fixture
+        // already excludes documented benign noise (React DevTools notice,
+        // Fast Refresh, favicon) and `requestfailed` entries, so anything
+        // left is an app defect such as a failing chunk or a handled
+        // console.error on mount.
+        expect(consoleErrors, `${route.name}: console errors`).toEqual([]);
     };
 
     for (const route of ROUTES.filter((r) => r.name !== "git" && r.name !== "branch")) {

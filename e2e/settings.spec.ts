@@ -19,16 +19,26 @@ test.describe("settings", () => {
     });
 
     test("switching sections changes the visible panel", async ({ page, expectNoPageErrors }) => {
-        // Start on the default Providers panel, then switch to Editor: the
-        // Editor panel's switch controls must appear (a no-op navigation
-        // would leave the Providers panel in place and fail this).
-        await page.getByText("Editor", { exact: true }).first().click();
+        // The Editor nav group header is an inert div; the actual navigation
+        // control is the leaf <button> named "Editor" inside the settings
+        // nav. Clicking the group header leaves the default Providers panel
+        // in place, so assert Editor-only panel state: the editor section
+        // mounts and the panel shows switch controls (a no-op click fails).
+        const editorButton = page
+            .locator("#bettershape-settings nav")
+            .getByRole("button", { name: "Editor" });
+        await editorButton.click();
+        await expect(page.locator("#settings-editor-font")).toBeVisible();
         await expect(page.getByRole("switch").first()).toBeVisible();
         expectNoPageErrors();
     });
 
     test("a switch control toggles", async ({ page, expectNoPageErrors }) => {
-        await page.getByText("Editor", { exact: true }).first().click();
+        await page
+            .locator("#bettershape-settings nav")
+            .getByRole("button", { name: "Editor" })
+            .click();
+        await expect(page.locator("#settings-editor-font")).toBeVisible();
         const firstSwitch = page.getByRole("switch").first();
         await expect(firstSwitch).toBeVisible();
         const before = await firstSwitch.getAttribute("aria-checked");

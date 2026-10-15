@@ -368,11 +368,17 @@ jobs:
             });
             const existing = comments.find((c) => c.body && c.body.includes(marker));
             const note = `\n\n> ⚠️ Latest preview build (${process.env.CONCLUSION}) for \`${process.env.HEAD_SHA.slice(0, 7)}\`, any live URL above may be stale.`;
-            if (existing && !existing.body.includes("Latest preview build")) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existing.id,
-                body: existing.body + note,
-              });
+            if (existing) {
+              // Replace any earlier failure note so the SHA/conclusion always
+              // describe the newest failed run, not the first one.
+              const base = existing.body.split("\n\n> ⚠️ Latest preview build")[0];
+              const body = base + note;
+              if (body !== existing.body) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: existing.id,
+                  body,
+                });
+              }
             }

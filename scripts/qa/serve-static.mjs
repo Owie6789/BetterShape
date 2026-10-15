@@ -17,14 +17,15 @@ import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "out");
-const realRoot = realpathSync(root);
-const port = Number(process.env.PORT ?? "48921");
-const host = process.env.HOST ?? "0.0.0.0";
-
+// Check existence before realpathSync: on a fresh checkout (no `out/` yet)
+// realpathSync throws ENOENT and hides the build instruction below.
 if (!existsSync(join(root, "index.html"))) {
     console.error("[preview:browser] out/index.html not found. Run `npm run build:preview` first.");
     process.exit(1);
 }
+const realRoot = realpathSync(root);
+const port = Number(process.env.PORT ?? "48921");
+const host = process.env.HOST ?? "0.0.0.0";
 
 const MIME = {
     ".html": "text/html; charset=utf-8",

@@ -442,9 +442,11 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         // ── git ──────────────────────────────────────────────────────────
         git_discover_repos: () => [{ path: PREVIEW_PROJECT_PATH, name: "bettershape-demo", isBare: false }],
         git_resolve_repo_for_file: () => PREVIEW_PROJECT_PATH,
+        // Status codes match the Rust backend (single letters, e.g.
+        // "M"/"A"/"C"); the Git UI keys colors and glyphs off them.
         git_status: () => [
-            { path: "src/App.tsx", status: "modified", staged: false },
-            { path: "README.md", status: "modified", staged: true },
+            { path: "src/App.tsx", status: "M", staged: false },
+            { path: "README.md", status: "M", staged: true },
         ],
         git_branches: () => [...state.branches],
         git_current_branch: () => state.branch,
