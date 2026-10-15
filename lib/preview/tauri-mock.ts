@@ -184,7 +184,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         ) as typeof PREVIEW_DIRS,
         branch: "main",
         branches: ["main", "preview/browser-qa"],
-        logStreamOffset: 0,
+        logStreamOffsets: new Map<string, number>(),
     };
     const listeners = new Map<string, Set<number>>();
     // `listen` records the callback id but returns a separate subscription
@@ -471,22 +471,29 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         git_log: () => previewLogEntries(),
         // Stateful paging: every page must advance, or the graph appends
         // duplicate commits with duplicate row keys.
-        git_log_stream_start: () => {
-            state.logStreamOffset = 0;
+        // The Rust backend keys streamers by callerId (STREAMERS map), so
+        // offsets are per-caller: interleaved streams page independently.
+        git_log_stream_start: (args) => {
+            state.logStreamOffsets.set(String(args.callerId ?? ""), 0);
             return null;
         },
         git_log_stream_next: (args) => {
+            const key = String(args.callerId ?? "");
             const entries = previewLogEntries();
             const limit = typeof args.limit === "number" ? args.limit : entries.length;
-            const page = entries.slice(state.logStreamOffset, state.logStreamOffset + limit);
-            state.logStreamOffset += page.length;
+            const offset = state.logStreamOffsets.get(key) ?? 0;
+            const page = entries.slice(offset, offset + limit);
+            state.logStreamOffsets.set(key, offset + page.length);
             return page;
         },
-        git_log_stream_stop: () => null,
+        git_log_stream_stop: (args) => {
+            state.logStreamOffsets.delete(String(args.callerId ?? ""));
+            return null;
+        },
         git_branch_graph: () => ({
             nodes: [{
                 name: state.branch, commit: "preview000300000000000000000000000000", author: "Preview Fixture",
-                date: new Date().toISOString(), ahead: 0, x: 0, y: 0, parents: [], isCurrent: true, isRemote: false,
+                date: String(Math.floor(Date.now() / 1000)), ahead: 0, x: 0, y: 0, parents: [], isCurrent: true, isRemote: false,
             }],
             width: 1, height: 1, currentBranch: state.branch, total: 1, truncated: false,
         }),

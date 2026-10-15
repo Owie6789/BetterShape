@@ -252,7 +252,7 @@ function ChangeSection({
                     <Checkmark
                         checked={isAllStaged ? true : isSomeStaged ? "indeterminate" : false}
                         onCheckedChange={onToggleStage}
-                        label={isAllStaged ? `Unstage all in ${title}` : `Stage all in ${title}`}
+                        label={isAllStaged ? "Unstage all changes" : "Stage all changes"}
                     />
                 </div>
                 <span className="text-sm font-normal text-text-secondary group-hover:text-text-primary transition-colors">

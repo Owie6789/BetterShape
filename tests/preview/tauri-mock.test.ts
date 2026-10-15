@@ -84,6 +84,27 @@ describe("git log date contract", () => {
     });
 });
 
+describe("git log streaming per caller", () => {
+    it("interleaved callerIds page independently (Rust STREAMERS parity)", () => {
+        const { handle } = createPreviewInvokeHandler("project");
+        handle("git_log_stream_start", { path: PREVIEW_PROJECT_PATH, callerId: "graph" });
+        handle("git_log_stream_start", { path: PREVIEW_PROJECT_PATH, callerId: "source" });
+        const graphPage1 = handle("git_log_stream_next", { callerId: "graph", limit: 2 }) as Array<{ hash: string }>;
+        expect(graphPage1).toHaveLength(2);
+        const sourcePage1 = handle("git_log_stream_next", { callerId: "source", limit: 2 }) as Array<{ hash: string }>;
+        // The second caller starts from the top, not from graph's offset.
+        expect(sourcePage1.map((e) => e.hash)).toEqual(graphPage1.map((e) => e.hash));
+        const graphPage2 = handle("git_log_stream_next", { callerId: "graph", limit: 2 }) as Array<{ hash: string }>;
+        expect(graphPage2).toHaveLength(1);
+        expect(graphPage2[0].hash).not.toBe(graphPage1[0].hash);
+        const again = handle("git_log_stream_next", { callerId: "never-started", limit: 2 }) as Array<{ hash: string }>;
+        expect(again).toHaveLength(2);
+        handle("git_log_stream_stop", { callerId: "graph" });
+        const afterStop = handle("git_log_stream_next", { callerId: "graph", limit: 2 }) as Array<{ hash: string }>;
+        expect(afterStop).toHaveLength(2);
+    });
+});
+
 describe("file mutations", () => {
     const lsRoot = (handle: (cmd: string, args?: Record<string, unknown>) => unknown) =>
         (handle("ls_dir", { path: PREVIEW_PROJECT_PATH }) as Array<{ name: string }>).map((e) => e.name);

@@ -226,6 +226,10 @@ jobs:
           fi
 
       - name: Morph AI QA of preview deployment
+        # Optional exploratory QA: its failure must not fail the deploy
+        # job (which would skip the preview-link comment and trip the
+        # stale marker). It reports on the PR itself when it runs.
+        continue-on-error: true
         if: steps.morph-check.outputs.enabled == 'true' && steps.vercel-deploy.outputs.url != ''
         # Pinned to the v2 commit (tags v1/v2 both point here), never a
         # floating tag for a third-party action receiving an API key.

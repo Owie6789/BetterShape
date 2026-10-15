@@ -272,3 +272,25 @@ complexity note on the edited `Checkmark` component), three CodeAnt.
   Later steps gated only on secrets would still have run. The verdict
   is now a `stand-down` step output, and the download, stage, and
   deploy steps all require it to not be `true`.
+
+## Review wave on head 2344506, 2026-10-15
+
+Three CodeAnt threads, all verified real:
+
+1. The optional Morph QA step could fail the deploy job after a
+   successful deploy, skipping the preview-link comment and tripping
+   the stale marker. It now runs with `continue-on-error: true`.
+2. The stage-all checkbox label keyed on the section's `isAllStaged`
+   prop while the handler (`handleToggleAllChanges`) acts on the global
+   `changes` list, so with mixed staging the announced action and the
+   performed action disagreed. The label now names the global action
+   ("Stage all changes" / "Unstage all changes"), matching the handler.
+   The underlying prop/handler impedance predates this PR; only the
+   label introduced here was wrong.
+3. The mock kept one `logStreamOffset` for all callers. The Rust
+   backend keys streamers by `callerId` (`STREAMERS` map in
+   `src-tauri/src/commands/git/mod.rs`), so the mock now keeps a
+   per-caller offset map, deletes it on `git_log_stream_stop`, and a
+   contract test covers interleaved streams. While in this code, the
+   `git_branch_graph` fixture still emitted an ISO date; it now emits
+   Unix seconds to match the same `GitLogEntry` contract fixed earlier.
