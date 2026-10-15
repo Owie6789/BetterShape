@@ -25,7 +25,9 @@ Replace the zero placeholder with the current 40-character hexadecimal PR head S
 - `npm run test:all`: <passed, failed, or not run with reason>
 - `npm run test:rust`: <passed, failed, or not applicable>
 - `npm run skills:verify`: <passed, failed, or not run with reason>
-- Rust formatting and clippy, when Rust changed: <passed, failed, not run, or not applicable>
+- Rust formatting and clippy, when Rust changed: <passed, failed, not run with reason, not applicable; or fmt: passed; clippy: passed>
+
+For separate Rust results, include both `fmt:` and `clippy:` statuses. Every `Not run` result needs its own reason.
 
 Use the head SHA from the run. A result from an earlier edit does not verify this head.
 

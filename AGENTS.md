@@ -184,7 +184,7 @@ You own the quality of the PR until it is merged or closed. Polling continues in
 7. When a GitHub request returns HTTP 403 or 429, back off for 30, 60 and then 120 seconds before you retry.
 8. Fix every failing log, thread and annotation on the same head in one batch. Read the failing job logs through `gh run view <run-id> --log-failed`.
 9. Push, then poll again from step 1 on the new head. Do not resolve a thread unless its fix is on the new head. Reply with the head SHA when you resolve.
-10. Stop when all of these hold on the same head for several consecutive polls: no pending or failed required check, no unresolved thread, and no new bot comment that reopens work.
+10. Stop only after a continuous ten-minute quiet window and several consecutive polls on the same head show: all required checks pass, CodeAnt approves that head, any requested CodeRabbit review is complete, no review thread is unresolved, and no new bot comment reopens work.
 
 Report to the human when the PR is ready, or when a decision only the human can make blocks it.
 

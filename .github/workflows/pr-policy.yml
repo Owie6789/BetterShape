@@ -117,7 +117,7 @@ jobs:
             });
             const maxListableFiles = 3000;
             if (files.length >= maxListableFiles) {
-              errors.push(`GitHub caps changed-file metadata at ${maxListableFiles} files; split this PR so policy-file classification is complete.`);
+              errors.push(`GitHub limits PRs to ${maxListableFiles} changed files; split this PR so policy-file classification is complete.`);
             }
 
             const policyPaths = [
