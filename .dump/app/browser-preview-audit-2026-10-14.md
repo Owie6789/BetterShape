@@ -556,3 +556,66 @@ Verification on this wave: tsc clean, Vitest 861 passed / 106 files
 full suite 25/25 (settings 3/3 new version, audit 5/5 with the new
 console gate), eslint on touched files clean, serve-static negative
 check above, workflow YAML parses.
+
+
+## Addendum 2026-10-15 (fourth wave): DeepSource code remediation and the six CodeAnt majors
+
+The user superseded the earlier JS-D1001 position and directed a full
+code fix for the 143 JavaScript issues in DeepSource run `7b6bac82`.
+The wave adds the missing documentation comments in the production
+files the run lists, converts the remaining module-scope function
+declarations in the split editor context to arrow functions, and
+finishes the complexity decompositions in `source.tsx`,
+`sections.tsx`, `split-context.tsx`, and `tauri-mock.ts`. Each
+extraction keeps the original markup, handlers, condition order, and
+props. The local Sonar probe (cognitive complexity 15, cyclomatic
+complexity 10, JSX depth 5) is clean on every touched code and test
+file, and a stricter JSX depth 4 probe is clean after extracting the
+chat actions trigger in `sections.tsx`.
+
+The six unresolved CodeAnt majors on `e24b2e1` are fixed in the same
+tree. `e2e/helpers/audit.ts` now requests the WCAG 2.2 A and AA tag
+sets, with the pinned axe-core limitation recorded next to the tag
+list. `ChangeSection` renders change rows in windows of 400 with a
+Show more control, so files past the first window stay reachable for
+diff, stage, unstage, and discard. The no-changes Push button in
+`CommitActionsRow` calls `handlePush`; `handleSync` keeps the Commit
+and Sync paths. `preview-deploy.yml` prefers an open PR whose head
+still matches the triggering commit when several open PRs share it,
+and the sticky-comment step re-reads the PR head after the deploy and
+stands down when it advanced. The preview mock returns the seeded
+conversation and its current id only while the fake project is open,
+including after `set_project_path` opens it in a welcome-seeded page;
+three tests in `tests/preview/tauri-mock.test.ts` pin the welcome,
+project, and transition states.
+
+Mistake recorded: the `Source` decomposition changed the status
+refresh callback to depend on the whole extracted args object. The
+call site builds that object inline, so the callback identity changed
+on every render, the mount effect re-ran after every render, and the
+uncached `git_has_remote` and `git_log` commands looped at about one
+pair per millisecond. The 8 second git cache in
+`lib/backend/commands.ts` masked the other three refresh commands in
+the invoke log. Root cause: a `useCallback` dependency on an inline
+object is a dependency on every render, not on the values inside it.
+Corrected understanding: extracted hooks must depend on the primitive
+values the original callback listed. Behaviour change:
+`useGitStatusRefresh` now destructures its args and depends on
+`projectPath`, `scmRepoPath`, `repoKey`, `reposCount`,
+`reposLoading`, the loading callbacks, the state setters, and the
+repo-key ref, and it rebuilds the stale check from `repoKey` at call
+time exactly as the pre-extraction callback did. The Playwright audit
+caught the regression as an IPC-quiet timeout on `/git` and
+`/branch`; both routes pass after the fix.
+
+Verification on this wave: `npm ci` pass; `npm run lint` pass with 0
+errors and 157 warnings; `npx tsc --noEmit` pass;
+`npm run build:runtime` pass; full Vitest 864 passed in 106 files;
+targeted shelf, chat-list, and preview mock tests 59 passed;
+Playwright full suite 25 passed, including the audit crawl on `/git`
+and `/branch`; `npm run build:preview` pass; serve-static checks pass
+for `/`, `/settings/`, missing paths, encoded traversal, null bytes,
+a symlink escape, and the missing `out/` instruction with exit 1;
+`npm run skills:verify` pass with 53 of 53 locked skills verified.
+`npm run test:rust` could not run in this sandbox because Cargo is
+not installed; no Rust source changed.

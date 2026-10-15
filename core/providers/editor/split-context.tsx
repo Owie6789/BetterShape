@@ -36,7 +36,8 @@ type Action =
     | { type: "SYNC_OPEN_FILES"; paths: string[]; backendActive: string | null }
     | { type: "OPEN_IN_FOCUSED"; path: string };
 
-function pickNeighbor(active: string, tabs: string[]): string | null {
+/** Tab that takes focus when `active` leaves: the next tab, else the previous, else the first. */
+const pickNeighbor = (active: string, tabs: string[]): string | null => {
     if (tabs.length === 0) return null;
     const idx = tabs.indexOf(active);
     if (idx === -1) return tabs[0];
@@ -45,7 +46,108 @@ function pickNeighbor(active: string, tabs: string[]): string | null {
     return tabs[0];
 }
 
-function reducer(state: EditorGroupsState, action: Action): EditorGroupsState {
+/** The two editor groups after removing closed tabs and repairing the active tab. */
+const pruneGroups = (
+    split: SplitLayout,
+    open: Set<string>,
+): { left: EditorGroup; right: EditorGroup } => {
+    /** Drop closed tabs from a group and repair its active tab. */
+    const prune = (group: EditorGroup): EditorGroup => {
+        const tabs = group.tabs.filter((p) => open.has(p));
+        const active = group.active && open.has(group.active) ? group.active : (tabs[0] ?? null);
+        return { tabs, active };
+    };
+    return { left: prune(split.left), right: prune(split.right) };
+};
+
+/** Whether a pruned group still matches its pre-sync tabs and active tab. */
+const isGroupUnchanged = (next: EditorGroup, current: EditorGroup): boolean =>
+    next.tabs.length === current.tabs.length &&
+    next.tabs.every((t, i) => t === current.tabs[i]) &&
+    next.active === current.active;
+
+/** Paths opened since the last sync: in neither group yet. */
+const findAddedPaths = (split: SplitLayout, paths: string[]): string[] =>
+    paths.filter((p) => !split.left.tabs.includes(p) && !split.right.tabs.includes(p));
+
+/** Open `path` in the focused group, appending a tab only when it is new. */
+const openInFocusedGroup = (state: EditorGroupsState, path: string): EditorGroupsState => {
+    if (!state.split) return state;
+    const g = state.split.focused;
+    const tabs = state.split[g].tabs.includes(path)
+        ? state.split[g].tabs
+        : [...state.split[g].tabs, path];
+    return {
+        split: {
+            ...state.split,
+            [g]: { tabs, active: path },
+        },
+    };
+};
+
+/** Append newly opened paths to the focused group after a sync. */
+const appendToFocusedGroup = (
+    state: EditorGroupsState,
+    groups: { left: EditorGroup; right: EditorGroup },
+    added: string[],
+): EditorGroupsState => {
+    const split = state.split;
+    if (!split) return state;
+    const g = split.focused;
+    const target = g === "left" ? groups.left : groups.right;
+    const withNew = {
+        tabs: [...target.tabs, ...added.filter((p) => !target.tabs.includes(p))],
+        active: added[added.length - 1],
+    };
+    return {
+        split: {
+            ...split,
+            left: g === "left" ? withNew : groups.left,
+            right: g === "right" ? withNew : groups.right,
+        },
+    };
+};
+
+/** SYNC_OPEN_FILES: prune closed tabs, then route newly opened paths. */
+const syncOpenFiles = (
+    state: EditorGroupsState,
+    action: Extract<Action, { type: "SYNC_OPEN_FILES" }>,
+): EditorGroupsState => {
+    if (!state.split) return state;
+    const open = new Set(action.paths);
+    const { left, right } = pruneGroups(state.split, open);
+    if (right.tabs.length === 0) return { split: null };
+    const added = findAddedPaths(state.split, action.paths);
+    if (added.length > 0) {
+        return appendToFocusedGroup(state, { left, right }, added);
+    }
+    if (isGroupUnchanged(left, state.split.left) && isGroupUnchanged(right, state.split.right)) {
+        return state;
+    }
+    return { split: { ...state.split, left, right } };
+};
+
+/** SET_GROUP_ACTIVE: focus a group, make `path` its active tab, mirror left to the backend. */
+const setGroupActive = (
+    state: EditorGroupsState,
+    action: Extract<Action, { type: "SET_GROUP_ACTIVE" }>,
+): EditorGroupsState => {
+    if (!state.split) return state;
+    const group = action.group;
+    const next = {
+        ...state.split,
+        focused: group,
+        [group]: {
+            ...state.split[group],
+            active: action.path,
+        },
+    };
+    if (group === "left") commands.setActiveFile(action.path);
+    return { split: next };
+};
+
+/** Split layout state machine: create and close splits, focus groups, sync open files. */
+const reducer = (state: EditorGroupsState, action: Action): EditorGroupsState => {
     switch (action.type) {
         case "SPLIT_RIGHT": {
             const { activePath, allPaths } = action;
@@ -72,85 +174,19 @@ function reducer(state: EditorGroupsState, action: Action): EditorGroupsState {
             return { split: { ...state.split, focused: action.group } };
 
         case "SET_GROUP_ACTIVE":
-            if (!state.split) return state;
-            const group = action.group;
-            const next = {
-                ...state.split,
-                focused: group,
-                [group]: {
-                    ...state.split[group],
-                    active: action.path,
-                },
-            };
-            if (group === "left") commands.setActiveFile(action.path);
-            return { split: next };
+            return setGroupActive(state, action);
 
-        case "OPEN_IN_FOCUSED": {
-            if (!state.split) return state;
-            const g = state.split.focused;
-            const tabs = state.split[g].tabs.includes(action.path)
-                ? state.split[g].tabs
-                : [...state.split[g].tabs, action.path];
-            return {
-                split: {
-                    ...state.split,
-                    [g]: { tabs, active: action.path },
-                },
-            };
-        }
+        case "OPEN_IN_FOCUSED":
+            return openInFocusedGroup(state, action.path);
 
-        case "SYNC_OPEN_FILES": {
-            const open = new Set(action.paths);
-            if (!state.split) return state;
-
-            const prune = (group: EditorGroup): EditorGroup => {
-                const tabs = group.tabs.filter((p) => open.has(p));
-                const active = group.active && open.has(group.active) ? group.active : tabs[0] ?? null;
-                return { tabs, active };
-            };
-
-            const left = prune(state.split.left);
-            const right = prune(state.split.right);
-
-            if (right.tabs.length === 0) {
-                return { split: null };
-            }
-
-            const added = action.paths.filter(
-                (p) => !state.split!.left.tabs.includes(p) && !state.split!.right.tabs.includes(p)
-            );
-            if (added.length === 0) {
-                const sameLeft =
-                    left.tabs.length === state.split.left.tabs.length &&
-                    left.tabs.every((t, i) => t === state.split!.left.tabs[i]) &&
-                    left.active === state.split.left.active;
-                const sameRight =
-                    right.tabs.length === state.split.right.tabs.length &&
-                    right.tabs.every((t, i) => t === state.split!.right.tabs[i]) &&
-                    right.active === state.split.right.active;
-                if (sameLeft && sameRight) return state;
-                return { split: { ...state.split, left, right } };
-            }
-
-            const g = state.split.focused;
-            const target = g === "left" ? left : right;
-            const withNew = {
-                tabs: [...target.tabs, ...added.filter((p) => !target.tabs.includes(p))],
-                active: added[added.length - 1],
-            };
-            return {
-                split: {
-                    ...state.split,
-                    left: g === "left" ? withNew : left,
-                    right: g === "right" ? withNew : right,
-                },
-            };
-        }
+        case "SYNC_OPEN_FILES":
+            return syncOpenFiles(state, action);
 
         default:
             return state;
     }
 }
+
 
 interface EditorGroupsContextType {
     splitEnabled: boolean;
@@ -165,12 +201,14 @@ interface EditorGroupsContextType {
 
 const EditorGroupsContext = createContext<EditorGroupsContextType | undefined>(undefined);
 
-export function EditorSplitProvider({ children }: { children: React.ReactNode }) {
+/** Provides the two-group editor split state for the workbench. */
+export const EditorSplitProvider = ({ children }: { children: React.ReactNode }) => {
     const { active_file, open_files } = useProjectState();
     const openPaths = useMemo(() => open_files.map((f) => f.path), [open_files]);
     const [{ split }, dispatch] = useReducer(reducer, { split: null });
     const prevPathsRef = useRef<string[]>([]);
 
+    /** Move the active tab into a new right-hand group. */
     const splitRight = useCallback(() => {
         if (split) return;
         const activePath = active_file ?? openPaths[0] ?? null;
@@ -181,6 +219,7 @@ export function EditorSplitProvider({ children }: { children: React.ReactNode })
         if (leftActive) commands.setActiveFile(leftActive);
     }, [active_file, openPaths, split]);
 
+    /** Close the split and return backend focus to the surviving tab. */
     const closeSplit = useCallback(() => {
         if (!split) return;
         const focus =
@@ -193,10 +232,12 @@ export function EditorSplitProvider({ children }: { children: React.ReactNode })
         if (focus) commands.setActiveFile(focus);
     }, [split, openPaths]);
 
+    /** Focus one editor group without changing its active tab. */
     const setFocusedGroup = useCallback((group: EditorGroupId) => {
         dispatch({ type: "SET_FOCUSED", group });
     }, []);
 
+    /** Activate a tab in one group, or the backend file when unsplit. */
     const setGroupActiveFile = useCallback((group: EditorGroupId, path: string) => {
         if (!split) {
             commands.setActiveFile(path);
@@ -205,6 +246,7 @@ export function EditorSplitProvider({ children }: { children: React.ReactNode })
         dispatch({ type: "SET_GROUP_ACTIVE", group, path });
     }, [split]);
 
+    /** Tabs owned by one group, or every open tab when unsplit. */
     const getGroupTabs = useCallback(
         (group: EditorGroupId): string[] => {
             if (!split) return openPaths;
@@ -213,6 +255,7 @@ export function EditorSplitProvider({ children }: { children: React.ReactNode })
         [split, openPaths]
     );
 
+    /** Active tab for one group, falling back to its first tab or the backend file. */
     const getGroupActiveFile = useCallback(
         (group: EditorGroupId): string | null => {
             if (!split) {
@@ -238,6 +281,7 @@ export function EditorSplitProvider({ children }: { children: React.ReactNode })
     }, [openPaths, split, active_file]);
 
     useEffect(() => {
+        /** Route `bettershape-editor-split` window events to the split actions. */
         const handleSplit = (e: Event) => {
             const action = (e as CustomEvent<{ action?: string }>).detail?.action;
             if (action === "close") closeSplit();
@@ -268,7 +312,8 @@ export function EditorSplitProvider({ children }: { children: React.ReactNode })
     );
 }
 
-export function useEditorSplit() {
+/** Split state for editor surfaces; throws outside the provider (see the optional variant). */
+export const useEditorSplit = () => {
     const ctx = useContext(EditorGroupsContext);
     if (!ctx) throw new Error("useEditorSplit must be used within EditorSplitProvider");
     return ctx;

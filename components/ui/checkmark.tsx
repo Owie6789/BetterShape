@@ -18,14 +18,17 @@ export interface CheckmarkProps {
     label?: string;
 }
 
+/** Tri-state checkbox control with keyboard and screen-reader semantics. */
 export const Checkmark = React.forwardRef<HTMLDivElement, CheckmarkProps>(
     ({ className, checked, onCheckedChange, disabled, label, ...props }, ref) => {
+        /** Flip the checked state; indeterminate counts as unchecked. */
         const toggle = () => {
             if (disabled) return;
             const nextChecked = checked !== true;
             onCheckedChange?.(nextChecked);
         };
 
+        /** Keep the click from reaching a surrounding pressable row. */
         const handleClick = (e: React.MouseEvent) => {
             e.stopPropagation();
             toggle();

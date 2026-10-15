@@ -110,6 +110,29 @@ describe("git log streaming per caller", () => {
     });
 });
 
+describe("seeded conversation gating", () => {
+    it("welcome seed exposes no seeded conversation", () => {
+        const { handle } = createPreviewInvokeHandler("welcome");
+        expect(handle("get_conversations", { projectPath: PREVIEW_PROJECT_PATH })).toEqual([]);
+        expect(handle("get_current_conversation_id")).toBeNull();
+    });
+
+    it("project seed exposes the seeded conversation", () => {
+        const { handle } = createPreviewInvokeHandler("project");
+        const conversations = handle("get_conversations", { projectPath: PREVIEW_PROJECT_PATH }) as Array<{ id: string }>;
+        expect(conversations.map((c) => c.id)).toEqual(["preview-conversation"]);
+        expect(handle("get_current_conversation_id")).toBe("preview-conversation");
+    });
+
+    it("opening the fake project after a welcome seed unlocks the conversation", () => {
+        const { handle } = createPreviewInvokeHandler("welcome");
+        handle("set_project_path", { path: PREVIEW_PROJECT_PATH });
+        const conversations = handle("get_conversations", { projectPath: PREVIEW_PROJECT_PATH }) as Array<{ id: string }>;
+        expect(conversations.map((c) => c.id)).toEqual(["preview-conversation"]);
+        expect(handle("get_current_conversation_id")).toBe("preview-conversation");
+    });
+});
+
 describe("conversation message scoping", () => {
     it("serves messages only for the seeded conversation", () => {
         const { handle } = createPreviewInvokeHandler("project");

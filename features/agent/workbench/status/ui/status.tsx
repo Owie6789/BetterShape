@@ -33,6 +33,7 @@ const pickStatusFile = (split: SplitState, activeFile: string | null | undefined
     return activeFile ?? null;
 };
 
+/** Normalize a possibly-null path to forward slashes for comparison. */
 const toSlashes = (path: string | null | undefined): string => (path ?? "").replace(/\\/g, "/");
 
 /** True when `file` (normalised) lives directly under `base`. */
@@ -93,7 +94,9 @@ const EditorStatusItems = ({
     onEol: () => void;
 }) => {
     const { editorStatus } = useEditorStatus();
+    /** Open the language mode picker for the status file. */
     const openLanguagePicker = () => openLanguageModePicker(statusFile, editorStatus.language);
+    /** Open the go-to-line palette. */
     const openLinePicker = () =>
         window.dispatchEvent(
             new CustomEvent("bettershape-command-palette", {
@@ -147,6 +150,7 @@ const EditorStatusItems = ({
         </>
     );
 };
+/** Workbench status bar for the active project, editor, and background work. */
 const Status = () => {
     // Status renders whenever a project is open. EditorSplitProvider mounts
     // only inside a file tab, so the split context is absent here and
@@ -169,6 +173,7 @@ const Status = () => {
         [editorStatus.language],
     );
 
+    /** Open the indentation picker (spaces, tabs, tab width). */
     const openIndentationPicker = () => {
         openStatusPalette("Select Indentation", [
             {
@@ -199,6 +204,7 @@ const Status = () => {
         ]);
     };
 
+    /** Open the LF/CRLF picker. */
     const openEolPicker = () => {
         openStatusPalette("Select End of Line Sequence", [
             { id: "eol-lf", label: "LF", run: () => dispatchEditorAction("setEol", { value: "LF" }) },

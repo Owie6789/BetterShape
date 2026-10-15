@@ -17,6 +17,7 @@ import {
 } from "@/lib/workspace/repo-history";
 import { cn } from "@/lib/utils";
 
+/** Parent directory portion of a path, rendered with the path's own separators. */
 const parentDir = (path: string): string => {
     const normalized = path.replace(/\\/g, "/");
     const idx = normalized.lastIndexOf("/");
@@ -25,6 +26,7 @@ const parentDir = (path: string): string => {
     return path.includes("\\") ? parent.replace(/\//g, "\\") : parent;
 };
 
+/** Single welcome-screen action tile (icon over label, inverts on hover). */
 const ActionCard = ({
     icon,
     label,
@@ -59,6 +61,7 @@ const ActionCard = ({
     );
 };
 
+/** The four project entry actions: open, clone, SSH, and GitHub. */
 const WelcomeActions = ({
     onPickFolder,
     onClone,
@@ -78,6 +81,7 @@ const WelcomeActions = ({
     </section>
 );
 
+/** Recent project list, collapsed to five entries until expanded. */
 const RecentProjects = ({
     recentFolders,
     visible,
@@ -128,6 +132,7 @@ const RecentProjects = ({
     </section>
 );
 
+/** First-run landing screen: project actions over the recent project list. */
 export const WelcomeScreen = ({
     recentFolders,
     onOpenProject,
@@ -176,6 +181,7 @@ export const useRecentFolders = (): RepoHistoryEntry[] => {
     const [entries, setEntries] = React.useState<RepoHistoryEntry[]>([]);
     React.useEffect(() => {
         setEntries(loadRepoHistory().slice(0, 15));
+        /** Reload history (max 15) whenever the window regains focus. */
         const onFocus = () => setEntries(loadRepoHistory().slice(0, 15));
         window.addEventListener("focus", onFocus);
         return () => window.removeEventListener("focus", onFocus);

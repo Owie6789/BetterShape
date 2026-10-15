@@ -71,7 +71,7 @@ jobs:
             }
             // Only an open PR may deploy. Accepting a closed one here
             // would deploy and comment on a PR nobody is reviewing.
-            let pr = prs.find((p) => p.state === "open");
+            let pr = prs.find((p) => p.state === "open" && p.head.sha === sha) ?? prs.find((p) => p.state === "open");
             if (!pr) {
               // Fallback: match open PRs by head SHA locally. A
               // `head: owner:branch` query would need the *fork* owner's
@@ -167,6 +167,10 @@ jobs:
               repo: context.repo.repo,
               pull_number: parseInt(process.env.PR_NUMBER, 10),
             });
+            // Same check, one job earlier, in the Comment preview link
+            // script: the head can still advance while the deploy itself
+            // runs. Both gates stay; this one shrinks the window, that
+            // one closes it at the last responsible moment.
             const standDown = pr.head.sha !== process.env.HEAD_SHA;
             if (standDown) {
               core.notice(`PR #${pr.number} head advanced past ${process.env.HEAD_SHA}; standing down.`);
@@ -273,6 +277,19 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:
           script: |
+            // The deploy above took minutes. Re-check the head at the
+            // last responsible moment: if the PR advanced since this run
+            // started, a newer run owns the sticky comment and this run
+            // must not overwrite it with its now-stale deployment URL.
+            const { data: currentPr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: parseInt(process.env.PR_NUMBER, 10),
+            });
+            if (currentPr.head.sha !== process.env.HEAD_SHA) {
+              core.notice(`PR #${currentPr.number} head advanced past ${process.env.HEAD_SHA} during deploy; skipping the preview-link comment.`);
+              return;
+            }
             const marker = "<!-- bettershape-browser-preview -->";
             const url = process.env.PREVIEW_URL;
             const issue_number = parseInt(process.env.PR_NUMBER, 10);

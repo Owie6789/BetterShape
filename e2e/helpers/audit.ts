@@ -22,7 +22,16 @@ export interface RouteAudit {
 /** Run axe (WCAG 2.x AA) and return every violation found. */
 export const runAxeAudit = async (page: Page) => {
     const results = await new AxeBuilder({ page })
-        .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+        .withTags([
+            "wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22a", "wcag22aa",
+            // Pinned axe-core (4.13.0) does not define a "wcag22a" level tag
+            // yet (`axe.getRules(["wcag22a"])` is empty), so the tag above is
+            // inert today and starts matching as soon as axe ships 2.2 Level A
+            // rules. "wcag221" names the one 2.2 Level A criterion axe does
+            // implement (timing adjustable, via meta-refresh) explicitly; it
+            // already runs under "wcag2a" today.
+            "wcag221",
+        ])
         .analyze();
     return results.violations;
 };

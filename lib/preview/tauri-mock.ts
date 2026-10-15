@@ -122,8 +122,10 @@ export const MODELED_PLUGIN_COMMANDS = [
     "plugin:event|unlisten",
 ];
 
+/** Final segment of a slash-delimited preview path. */
 const fileNameOf = (path: string): string => path.split("/").pop() ?? path;
 
+/** Accept only the two supported preview seed modes. */
 const asSeedMode = (value: string | null | undefined): PreviewSeedMode | null =>
     value === "project" || value === "welcome" ? value : null;
 
@@ -132,6 +134,7 @@ const PREVIEW_MESSAGES = [
     { role: "assistant", content: "It seeds a deterministic project so the workbench can be audited in a browser.", timestamp: Date.now() - 59_000 },
 ];
 
+/** Seeded Git history, newest first, in the backend's wire shape. */
 const previewLogEntries = () => {
     const now = Date.now();
     return [3, 2, 1].map((n) => ({
@@ -158,6 +161,7 @@ const SEED_CANDIDATES: Array<() => string | null | undefined> = [
     () => window.localStorage.getItem("bettershape:preview-seed"),
 ];
 
+/** Resolve the active seed from the candidate sources, defaulting to welcome. */
 const resolveSeedMode = (): PreviewSeedMode => {
     if (typeof window === "undefined") return "welcome";
     for (const read of SEED_CANDIDATES) {
@@ -197,6 +201,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
     const subscriptionCallbacks = new Map<number, number>();
     let nextEventId = 1;
 
+    /** Current project state in the backend's event payload shape. */
     const projectState = () => ({
         project_path: state.projectPath,
         open_files: state.openFiles.map((f) => ({ ...f })),
@@ -222,6 +227,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         });
     };
 
+    /** Broadcast the current project state to tracked listeners. */
     const emitProjectState = () => emit("project-state-update", projectState());
 
     /** Open a file tab unless one exists (mirrors backend open semantics). */
@@ -263,6 +269,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
     const removePath = (path: string) => {
         if (!path) return;
         removeTree(path);
+        /** Whether a path is the removed path or one of its descendants. */
         const vanished = (p: string) => p === path || p.startsWith(`${path}/`);
         if (state.openFiles.some((f) => vanished(f.path))) {
             state.openFiles = state.openFiles.filter((f) => !vanished(f.path));
@@ -273,11 +280,8 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         }
     };
 
-    /** Move or copy a fake-tree path, including directory children and open tabs. */
-    const relocatePath = (oldPath: string, newPath: string, copy: boolean) => {
-        if (!oldPath || !newPath || oldPath === newPath) return;
-        const isDir = oldPath in state.dirs;
-        if (!isDir && !(oldPath in state.files)) return;
+    /** Snapshot a fake-tree subtree (the path itself plus every descendant) for relocation. */
+    const snapshotSubtree = (oldPath: string, newPath: string, isDir: boolean) => {
         // Snapshot the subtree first: removeTree below deletes the sources.
         const movedFiles = new Map<string, string>();
         if (oldPath in state.files) movedFiles.set(newPath, state.files[oldPath]);
@@ -293,30 +297,40 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
                 movedDirs.set(`${newPath}${key.slice(oldPath.length)}`, state.dirs[key].map((e) => ({ ...e })));
             }
         }
+        return { movedFiles, movedDirs };
+    };
+
+    /** Point open tabs at the moved path, including tabs on moved descendants. */
+    const remapOpenTabs = (oldPath: string, newPath: string) => {
+        let tabsMoved = false;
+        for (const open of state.openFiles) {
+            if (open.path === oldPath) {
+                open.path = newPath;
+                open.name = fileNameOf(newPath);
+                tabsMoved = true;
+            } else if (open.path.startsWith(`${oldPath}/`)) {
+                open.path = `${newPath}${open.path.slice(oldPath.length)}`;
+                tabsMoved = true;
+            }
+        }
+        if (state.activeFile === oldPath) state.activeFile = newPath;
+        else if (state.activeFile?.startsWith(`${oldPath}/`)) {
+            state.activeFile = `${newPath}${state.activeFile.slice(oldPath.length)}`;
+        }
+        if (tabsMoved) emitProjectState();
+    };
+
+    /** Move or copy a fake-tree path, including directory children and open tabs. */
+    const relocatePath = (oldPath: string, newPath: string, copy: boolean) => {
+        if (!oldPath || !newPath || oldPath === newPath) return;
+        const isDir = oldPath in state.dirs;
+        if (!isDir && !(oldPath in state.files)) return;
+        const { movedFiles, movedDirs } = snapshotSubtree(oldPath, newPath, isDir);
         if (!copy) removeTree(oldPath);
         for (const [path, content] of movedFiles) state.files[path] = content;
         for (const [path, entries] of movedDirs) state.dirs[path] = entries;
         addDirEntry(newPath, isDir);
-        if (!copy) {
-            // Open tabs follow a rename, including tabs on descendants
-            // when a directory moved above them.
-            let tabsMoved = false;
-            for (const open of state.openFiles) {
-                if (open.path === oldPath) {
-                    open.path = newPath;
-                    open.name = fileNameOf(newPath);
-                    tabsMoved = true;
-                } else if (open.path.startsWith(`${oldPath}/`)) {
-                    open.path = `${newPath}${open.path.slice(oldPath.length)}`;
-                    tabsMoved = true;
-                }
-            }
-            if (state.activeFile === oldPath) state.activeFile = newPath;
-            else if (state.activeFile?.startsWith(`${oldPath}/`)) {
-                state.activeFile = `${newPath}${state.activeFile.slice(oldPath.length)}`;
-            }
-            if (tabsMoved) emitProjectState();
-        }
+        if (!copy) remapOpenTabs(oldPath, newPath);
     };
 
     const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
@@ -515,8 +529,12 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
 
         // ── chat / AI ────────────────────────────────────────────────────
         get_conversations: (args) => {
-            // Backend parity: a query for another project must not leak
-            // this project's seeded conversation.
+            // Backend parity: no project open means no conversations at
+            // all, and a query for another project must not leak this
+            // project's seeded conversation. Gate on live state, not on
+            // the boot seed: set_project_path can open the fake project
+            // inside a welcome-seeded page.
+            if (state.projectPath !== PREVIEW_PROJECT_PATH) return [];
             const requested = args.projectPath;
             if (typeof requested === "string" && requested !== PREVIEW_PROJECT_PATH) return [];
             return [{
@@ -535,7 +553,10 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         },
         get_chat_history: () => [],
         get_chat_title: () => "Preview fixture chat",
-        get_current_conversation_id: () => "preview-conversation",
+        // Only while the fake project is open: the seeded conversation
+        // does not exist in the welcome state (backend calls expect null).
+        get_current_conversation_id: () =>
+            state.projectPath === PREVIEW_PROJECT_PATH ? "preview-conversation" : null,
         get_ai_config: () => ({
             providers: [],
             defaultModel: "auto",
@@ -584,6 +605,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
     };
 
 
+    /** Deliver a plugin event emission to tracked listeners. */
     const handleEventEmit = (args: Record<string, unknown>): unknown => {
         const event = typeof args.event === "string" ? args.event : null;
         if (event) {
@@ -592,6 +614,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         return null;
     };
 
+    /** Answer plugin commands that have no stateful preview handler. */
     const pluginFallback = (cmd: string, args: Record<string, unknown>): unknown => {
         // Event plugin: `listen` never reaches here, handle() returns the
         // tracked subscription id first. `emit` goes through the tracked
@@ -616,6 +639,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         return BOOLEAN_GETTER.test(cmd) ? false : null;
     };
 
+    /** Record plugin event subscriptions and removals for later delivery. */
     const trackListener = (cmd: string, args?: Record<string, unknown>): number | undefined => {
         if (typeof args?.event !== "string") return undefined;
         const handlerId = (args as { handler?: unknown }).handler;
@@ -646,6 +670,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         return undefined;
     };
 
+    /** Dispatch one invoke to its modeled handler or safe fallback. */
     const handle = (cmd: string, args?: Record<string, unknown>): unknown => {
         const tracked = trackListener(cmd, args);
         if (cmd === "plugin:event|listen" && typeof tracked === "number") return tracked;
@@ -671,6 +696,7 @@ export const installBrowserPreviewMocks = (): boolean => {
     const seed = resolveSeedMode();
     const { handle, commands } = createPreviewInvokeHandler(seed);
     const known = new Set([...commands, ...MODELED_PLUGIN_COMMANDS]);
+    /** Whether a command has a modeled preview handler. */
     const isKnownInvoke = (cmd: string): boolean => known.has(cmd);
     const invokes: PreviewInvokeRecord[] = [];
 
