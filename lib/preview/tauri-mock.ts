@@ -705,6 +705,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         return options.directory ? PREVIEW_PROJECT_PATH : `${PREVIEW_PROJECT_PATH}/README.md`;
     };
 
+    /** Plugin-command fallback: modeled plugin results, else the null default. */
     const pluginFallback = (cmd: string, args: Record<string, unknown>): unknown => {
         if (cmd === "plugin:dialog|open") return dialogOpenResult(args);
         // Event plugin: `listen` never reaches here, handle() returns the
