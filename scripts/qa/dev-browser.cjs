@@ -37,4 +37,6 @@ const child = spawn(process.execPath, [nextBin, "dev", "-H", host, "-p", port], 
 for (const signal of ["SIGINT", "SIGTERM"]) {
     process.on(signal, () => child.kill(signal));
 }
-child.on("exit", (code) => process.exit(code ?? 0));
+// A signal-killed child reports a null code; the run was interrupted,
+// not successful, so map it to a failure exit.
+child.on("exit", (code) => process.exit(code ?? 1));

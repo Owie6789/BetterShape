@@ -880,6 +880,7 @@ export const installBrowserPreviewMocks = (): boolean => {
     /** Whether a command has a modeled preview handler. */
     const isKnownInvoke = (cmd: string): boolean => known.has(cmd);
     const invokes: PreviewInvokeRecord[] = [];
+    const unknownCommandSet = new Set<string>();
 
     // Synchronous install: this module is only imported from
     // `instrumentation-client.ts`, which runs before the app becomes
@@ -894,6 +895,7 @@ export const installBrowserPreviewMocks = (): boolean => {
     // real handler id, breaking our listener bookkeeping.
     mockIPC((cmd, args) => {
         const unknown = !isKnownInvoke(cmd);
+        if (unknown) unknownCommandSet.add(cmd);
         const recordArgs = args as Record<string, unknown> | undefined;
         invokes.push({ cmd, args: recordArgs, unknown, at: Date.now() });
         if (invokes.length > 500) invokes.shift();
@@ -902,10 +904,13 @@ export const installBrowserPreviewMocks = (): boolean => {
     window.__BETTERSHAPE_PREVIEW__ = {
         seed,
         invokes,
-        unknownCommands: () =>
-            [...new Set(invokes.filter((i) => i.unknown).map((i) => i.cmd))].sort((a, b) => a.localeCompare(b)),
+        // Persistent set, not derived from the capped `invokes` ring:
+        // past 500 calls the ring drops early records, and the audit's
+        // unknown-command inventory must stay complete.
+        unknownCommands: () => [...unknownCommandSet].sort((a, b) => a.localeCompare(b)),
         clearInvokes: () => {
             invokes.length = 0;
+            unknownCommandSet.clear();
         },
     };
     document.documentElement.dataset.bettershapePreview = seed;

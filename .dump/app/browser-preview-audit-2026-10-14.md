@@ -707,3 +707,48 @@ one `edit_file` call followed by verification. Recovery evidence: file
 restored with `git checkout HEAD -- lib/preview/tauri-mock.ts`, changes
 reapplied via the asserted replacement script, `npx tsc --noEmit` clean and
 `tests/preview/tauri-mock.test.ts` green afterwards.
+
+## Sandbox recovery record: HEAD reset between turns (2026-10-15)
+
+What happened: at the start of the follow-up session the local checkout had
+HEAD at the branch point `764f135`, no `node_modules`, and no `/tmp` probe
+scripts, while `origin/arena/b0d84ccc-app` still held the pushed head
+`241412d`. All session work was present only as working-tree changes.
+
+Root cause: the sandbox snapshot excludes `node_modules` and `/tmp`, and the
+local branch pointer did not survive the restore. No pushed work was lost.
+
+Recovery: `git fetch origin arena/b0d84ccc-app`, then
+`git reset --mixed 241412d`, which restored HEAD and the index to the pushed
+head while keeping the working tree. `git status` afterwards showed exactly
+the five files edited for the CodeAnt nitpicks round, confirming the tree is
+the pushed head plus that batch. Dependencies were reinstalled with
+`npm ci`. Behaviour change: after any session restart, confirm
+`git log --oneline -1` matches the last pushed head before editing.
+
+## Completion check correction (2026-10-15)
+
+What happened: after head `241412d` the loop was reported complete on the
+strength of a green Sonar quality gate and zero unresolved review threads.
+Both signals were real and both were insufficient. A CodeAnt nitpicks block
+with five items was still open, and it lives in an issue comment, not in a
+review thread, so the thread sweep never saw it. The Sonar quality gate was
+OK while the issues API still held one OPEN BLOCKER (`typescript:S3516` in
+`features/git/ui/source/source.tsx`). A CodeRabbit review requested later
+then added five inline findings, four of them valid.
+
+Corrected understanding: completion requires four separate checks, and no
+one of them implies the others. The checks are the commit statuses, the
+GraphQL unresolved-thread sweep, the CodeAnt issue-comment bodies
+(nitpicks and PR Risk blocks), and the Sonar issues API with
+`resolved=false`. Bot reviews that arrive after a push also reopen the
+loop until their threads are answered.
+
+Behaviour change: before any completion claim, fetch all four signals on
+the current head and record each result. The fixes from this round are the
+`RUN_URL` workflow_run link, audit JSON record-before-assert, the `R`
+rename status color, `ensureStagedForAmend` returning `Promise<void>`, the
+persistent unknown-command set in the preview mock, the dev-browser null
+exit mapping, and the CodeRabbit set: dead `stand-down` output removal,
+stage/unstage-all error reporting, per-section stage toggles, and the
+unmount guard on `latestRepoKeyRef`.

@@ -59,10 +59,11 @@ test.describe("@audit route crawl", () => {
         }
 
         const violations = await runAxeAudit(page);
-        assertA11yWithinBaseline(violations, route.path, a11yBaseline);
         await captureRoute(page, testInfo, route.name);
 
         const ipc = await collectIpcInventory(page);
+        // Record first, assert second: a baseline failure must not omit
+        // the failing route and its violations from the audit JSON.
         audits.push({
             route: route.path,
             title: await page.title(),
@@ -77,6 +78,7 @@ test.describe("@audit route crawl", () => {
             ipcCommandCount: ipc.count,
             timings: await collectTimings(page),
         });
+        assertA11yWithinBaseline(violations, route.path, a11yBaseline);
 
         expect(pageErrors, `${route.name}: uncaught page errors`).toEqual([]);
         // Console errors are a gate too, not report-only data. The fixture

@@ -110,6 +110,7 @@ const STATUS_COLOR: Record<string, string> = {
     A: "var(--git-added)",
     U: "var(--git-added)",
     D: "var(--git-deleted)",
+    R: "var(--git-modified)",
 };
 
 /** File name and parent-path label for one change row. */
@@ -620,12 +621,12 @@ const runPostCommit = async (args: {
     }
 };
 
-/** Stage changes into an amended commit when the user agrees. Returns false to abort. */
+/** Stage changes into an amended commit when the user agrees. */
 const ensureStagedForAmend = async (
     repo: string,
     changes: GitFileParams[],
-): Promise<boolean> => {
-    if (changes.length === 0) return true;
+): Promise<void> => {
+    if (changes.length === 0) return;
     const stageAll = await confirm(
         "Stage all changes into the amended commit?",
         {
@@ -636,7 +637,6 @@ const ensureStagedForAmend = async (
         },
     );
     if (stageAll) await stageUnstaged(repo, changes);
-    return true;
 };
 
 /** Ask before staging everything into a commit with nothing staged. Returns false to abort. */
@@ -661,7 +661,8 @@ const ensureStagedForCommit = async (
         await stageUnstaged(repo, changes);
         return true;
     }
-    return ensureStagedForAmend(repo, changes);
+    await ensureStagedForAmend(repo, changes);
+    return true;
 };
 
 /** Confirm the composer message when the user enabled confirm-before-commit. Returns false to abort. */
@@ -1043,15 +1044,23 @@ const useGitPanelHandlers = (ctx: {
     /** Stage every change (More actions menu). */
     const stageAllChanges = async () => {
         if (!gitRepo) return;
-        await commands.gitStageAll(gitRepo);
-        refresh().catch(() => undefined);
+        try {
+            await commands.gitStageAll(gitRepo);
+            refresh().catch(() => undefined);
+        } catch (e) {
+            notify.gitError(e, "Stage all failed");
+        }
     };
 
     /** Unstage every change (More actions menu). */
     const unstageAllChanges = async () => {
         if (!gitRepo) return;
-        await commands.gitUnstageAll(gitRepo);
-        refresh().catch(() => undefined);
+        try {
+            await commands.gitUnstageAll(gitRepo);
+            refresh().catch(() => undefined);
+        } catch (e) {
+            notify.gitError(e, "Unstage all failed");
+        }
     };
 
     /** Stash every change, including untracked files (More actions menu). */
@@ -1834,7 +1843,8 @@ const ChangeList = ({
     unstagedChanges,
     isChangesOpen,
     setIsChangesOpen,
-    handleToggleAllChanges,
+    stageAllChanges,
+    unstageAllChanges,
     refresh,
     handleShowDiff,
     gitRepo,
@@ -1845,7 +1855,8 @@ const ChangeList = ({
     unstagedChanges: GitFileParams[];
     isChangesOpen: boolean;
     setIsChangesOpen: (value: boolean) => void;
-    handleToggleAllChanges: () => void;
+    stageAllChanges: () => void;
+    unstageAllChanges: () => void;
     refresh: (opts?: { track?: boolean }) => void;
     handleShowDiff: (path: string, staged: boolean) => void;
     gitRepo: string | null;
@@ -1860,7 +1871,7 @@ const ChangeList = ({
             onToggleOpen={() => setIsChangesOpen(!isChangesOpen)}
             isAllStaged={stagedChanges.length > 0}
             isSomeStaged={stagedChanges.length > 0}
-            onToggleStage={handleToggleAllChanges}
+            onToggleStage={unstageAllChanges}
             onRefresh={refresh}
             onShowDiff={handleShowDiff}
             projectPath={gitRepo || ""}
@@ -1874,7 +1885,7 @@ const ChangeList = ({
             onToggleOpen={() => setIsChangesOpen(!isChangesOpen)}
             isAllStaged={false}
             isSomeStaged={false}
-            onToggleStage={handleToggleAllChanges}
+            onToggleStage={stageAllChanges}
             onRefresh={refresh}
             onShowDiff={handleShowDiff}
             projectPath={gitRepo || ""}
@@ -2304,7 +2315,8 @@ interface EmbeddedSourceBodyProps {
     unstagedChanges: GitFileParams[];
     isChangesOpen: boolean;
     setIsChangesOpen: (value: boolean) => void;
-    handleToggleAllChanges: () => void;
+    stageAllChanges: () => void;
+    unstageAllChanges: () => void;
     refresh: (opts?: { track?: boolean }) => void;
     handleShowDiff: (path: string, staged: boolean) => void;
     gitRepo: string | null;
@@ -2349,7 +2361,8 @@ const EmbeddedSourceBody = ({
     unstagedChanges,
     isChangesOpen,
     setIsChangesOpen,
-    handleToggleAllChanges,
+    stageAllChanges,
+    unstageAllChanges,
     refresh,
     handleShowDiff,
     gitRepo,
@@ -2384,7 +2397,8 @@ const EmbeddedSourceBody = ({
             unstagedChanges={unstagedChanges}
             isChangesOpen={isChangesOpen}
             setIsChangesOpen={setIsChangesOpen}
-            handleToggleAllChanges={handleToggleAllChanges}
+            stageAllChanges={stageAllChanges}
+            unstageAllChanges={unstageAllChanges}
             refresh={refresh}
             handleShowDiff={handleShowDiff}
             gitRepo={gitRepo}
@@ -2456,7 +2470,8 @@ const PanelSourceBody = ({
     unstagedChanges,
     isChangesOpen,
     setIsChangesOpen,
-    handleToggleAllChanges,
+    stageAllChanges,
+    unstageAllChanges,
     refresh,
     handleShowDiff,
     gitRepo,
@@ -2475,7 +2490,8 @@ const PanelSourceBody = ({
     unstagedChanges: GitFileParams[];
     isChangesOpen: boolean;
     setIsChangesOpen: (value: boolean) => void;
-    handleToggleAllChanges: () => void;
+    stageAllChanges: () => void;
+    unstageAllChanges: () => void;
     refresh: (opts?: { track?: boolean }) => void;
     handleShowDiff: (path: string, staged: boolean) => void;
     gitRepo: string | null;
@@ -2496,7 +2512,8 @@ const PanelSourceBody = ({
             unstagedChanges={unstagedChanges}
             isChangesOpen={isChangesOpen}
             setIsChangesOpen={setIsChangesOpen}
-            handleToggleAllChanges={handleToggleAllChanges}
+            stageAllChanges={stageAllChanges}
+            unstageAllChanges={unstageAllChanges}
             refresh={refresh}
             handleShowDiff={handleShowDiff}
             gitRepo={gitRepo}
@@ -2550,7 +2567,8 @@ const SourceBody = (props: SourceBodyProps) => {
         unstagedChanges,
         isChangesOpen,
         setIsChangesOpen,
-        handleToggleAllChanges,
+        stageAllChanges,
+        unstageAllChanges,
         refresh,
         handleShowDiff,
         gitRepo,
@@ -2581,7 +2599,8 @@ const SourceBody = (props: SourceBodyProps) => {
                 unstagedChanges={unstagedChanges}
                 isChangesOpen={isChangesOpen}
                 setIsChangesOpen={setIsChangesOpen}
-                handleToggleAllChanges={handleToggleAllChanges}
+                stageAllChanges={stageAllChanges}
+                unstageAllChanges={unstageAllChanges}
                 refresh={refresh}
                 handleShowDiff={handleShowDiff}
                 gitRepo={gitRepo}
@@ -2675,6 +2694,12 @@ const Source = ({
     const latestRepoKeyRef = useRef(repoKey);
     useEffect(() => {
         latestRepoKeyRef.current = repoKey;
+        // Park the ref on a value no repo key can take (keys always contain
+        // the newline separator) so a refresh still in flight at unmount or
+        // key change reads as stale and drops its results.
+        return () => {
+            latestRepoKeyRef.current = "unmounted";
+        };
     }, [repoKey]);
 
     const { startLoading, stopLoading } = useLoading();
@@ -2744,18 +2769,6 @@ const refresh = useGitStatusRefresh({
 
     const stagedChanges = changes.filter(c => c.staged);
     const unstagedChanges = changes.filter(c => !c.staged);
-    const isAllStaged = changes.length > 0 && changes.every(c => c.staged);
-
-    /** Stage everything, or unstage everything when all changes are staged. */
-    const handleToggleAllChanges = async () => {
-        if (!gitRepo) return;
-        if (isAllStaged) {
-            await commands.gitUnstageAll(gitRepo);
-        } else {
-            await commands.gitStageAll(gitRepo);
-        }
-        refresh();
-    };
 
     const sourceChrome = (
         <SourceChrome
@@ -2818,7 +2831,8 @@ const refresh = useGitStatusRefresh({
                 unstagedChanges={unstagedChanges}
                 isChangesOpen={isChangesOpen}
                 setIsChangesOpen={setIsChangesOpen}
-                handleToggleAllChanges={handleToggleAllChanges}
+                stageAllChanges={stageAllChanges}
+                unstageAllChanges={unstageAllChanges}
                 refresh={refresh}
                 handleShowDiff={handleShowDiff}
                 gitRepo={gitRepo}
