@@ -79,7 +79,8 @@ export const Checkmark = React.forwardRef<HTMLDivElement, CheckmarkProps>(
                 onKeyDown={(e) => {
                     if (e.key === " " || e.key === "Enter") {
                         e.preventDefault();
-                        toggle();
+                        // Held keys auto-repeat; one press is one toggle.
+                        if (!e.repeat) toggle();
                     }
                 }}
                 className={cn(
