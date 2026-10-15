@@ -305,9 +305,7 @@ const ChangeSectionRows = ({ isOpen, files, visibleCount, setVisibleCount, title
     onShowDiff: (path: string, staged: boolean) => void;
     selectedPath?: string | null;
     selectedStaged?: boolean | null;
-}) => (
-    <>
-        {isOpen && (
+}) => isOpen ? (
             <div className="space-y-0.5 mt-1">
                 {files.slice(0, visibleCount).map((file) => (
                     <ChangeRow
@@ -337,9 +335,7 @@ const ChangeSectionRows = ({ isOpen, files, visibleCount, setVisibleCount, title
                     </div>
                 ) : null}
             </div>
-        )}
-    </>
-);
+        ) : null;
 
 /** A collapsible staged/unstaged group of change rows (windowed, with Show more). */
 const ChangeSection = ({
@@ -439,7 +435,7 @@ const useEmbeddedDiffContent = (
         }
         let cancelled = false;
         setDiffLoading(true);
-        void (async () => {
+        (async () => {
             try {
                 const { original, modified } = await loadDiffContent(gitRepo, diffFile);
                 if (!cancelled) {
@@ -454,7 +450,7 @@ const useEmbeddedDiffContent = (
             } finally {
                 if (!cancelled) setDiffLoading(false);
             }
-        })();
+        })().catch(() => undefined);
         return () => {
             cancelled = true;
         };
@@ -709,7 +705,7 @@ const checkCommitPreconditions = async (
         notify.error("Git", "Nothing to amend");
         return false;
     }
-    return mayAmendWithRemote(amend, hasRemote, gitRepo);
+    return await mayAmendWithRemote(amend, hasRemote, gitRepo);
 };
 
 /** Join a commit title and description into the full message. */
@@ -737,6 +733,12 @@ const applyCommit = async (repo: string, fullMessage: string, amend: boolean): P
     } else {
         await commands.gitCommit(repo, fullMessage);
     }
+};
+
+/** Report a failed commit or amend to the console and the user. */
+const reportCommitError = (e: unknown, amend: boolean) => {
+    console.error("Commit failed:", e);
+    notify.gitError(e, amend ? "Amend failed" : "Commit failed");
 };
 
 /** Handle for the composer commit flow: amend guards, staging fallback, confirm, sync prompt. */
@@ -782,14 +784,30 @@ const useHandleCommit = (ctx: {
             });
             return true;
         } catch (e) {
-            console.error("Commit failed:", e);
-            notify.gitError(e, amend ? "Amend failed" : "Commit failed");
+            reportCommitError(e, amend);
             return false;
         }
     };
     return commitNow;
 };
 
+
+/** Stream a generated commit message into the composer title and description. */
+const applyGeneratedCommitMessage = async (
+    message: string,
+    setCommitTitle: (value: string) => void,
+    setCommitDescription: (value: string) => void,
+): Promise<void> => {
+    const lines = message.trim().split("\n");
+    const title = lines[0] ?? "";
+    const description = lines.slice(1).join("\n").trim();
+    setCommitTitle("");
+    setCommitDescription("");
+    await streamTextInto(title, setCommitTitle);
+    if (description) {
+        await streamTextInto(description, setCommitDescription, { msPerChar: 4 });
+    }
+};
 
 /** Remote, sync, menu, and AI-assist handlers for the Source panel, split out to bound Source complexity. */
 const useGitPanelHandlers = (ctx: {
@@ -984,15 +1002,7 @@ const useGitPanelHandlers = (ctx: {
         setCommitSuggestionStatus("loading");
         try {
             const message = await commands.generateCommitMessage(gitRepo);
-            const lines = message.trim().split("\n");
-            const title = lines[0] ?? "";
-            const description = lines.slice(1).join("\n").trim();
-            setCommitTitle("");
-            setCommitDescription("");
-            await streamTextInto(title, setCommitTitle);
-            if (description) {
-                await streamTextInto(description, setCommitDescription, { msPerChar: 4 });
-            }
+            await applyGeneratedCommitMessage(message, setCommitTitle, setCommitDescription);
         } catch (err) {
             notify.error("AI Error", errorText(err));
         } finally {
@@ -1034,14 +1044,14 @@ const useGitPanelHandlers = (ctx: {
     const stageAllChanges = async () => {
         if (!gitRepo) return;
         await commands.gitStageAll(gitRepo);
-        void refresh();
+        refresh().catch(() => undefined);
     };
 
     /** Unstage every change (More actions menu). */
     const unstageAllChanges = async () => {
         if (!gitRepo) return;
         await commands.gitUnstageAll(gitRepo);
-        void refresh();
+        refresh().catch(() => undefined);
     };
 
     /** Stash every change, including untracked files (More actions menu). */
@@ -1050,7 +1060,7 @@ const useGitPanelHandlers = (ctx: {
         try {
             await commands.gitStashSave(gitRepo, "", true);
             notify.success("Git", "Changes stashed.");
-            void refresh();
+            refresh().catch(() => undefined);
         } catch (e) {
             notify.gitError(e, "Stash failed");
         }
@@ -1062,7 +1072,7 @@ const useGitPanelHandlers = (ctx: {
         try {
             await commands.gitStashPop(gitRepo, 0);
             notify.success("Git", "Stash applied and dropped.");
-            void refresh();
+            refresh().catch(() => undefined);
         } catch (e) {
             notify.gitError(e, "Stash pop failed");
         }
@@ -1074,7 +1084,7 @@ const useGitPanelHandlers = (ctx: {
         try {
             await commands.gitMergeAbort(gitRepo);
             notify.info("Git", "Merge aborted.");
-            void refresh();
+            refresh().catch(() => undefined);
         } catch (e) {
             notify.gitError(e, "Merge abort failed");
         }
@@ -1086,7 +1096,7 @@ const useGitPanelHandlers = (ctx: {
         try {
             await commands.gitRebaseAbort(gitRepo);
             notify.info("Git", "Rebase aborted.");
-            void refresh();
+            refresh().catch(() => undefined);
         } catch (e) {
             notify.gitError(e, "Rebase abort failed");
         }
@@ -1100,6 +1110,37 @@ const useGitPanelHandlers = (ctx: {
     };
 };
 
+
+/** Refresh and sync handler bundle shared by the panel header and source chrome. */
+type PanelSyncHandlers = {
+    refresh: (opts?: { track?: boolean }) => void;
+    handleSync: () => void;
+    handleFetch: () => void;
+    handlePull: () => void;
+    handlePush: () => void;
+    stageAllChanges: () => void;
+    unstageAllChanges: () => void;
+    stashChanges: () => void;
+    popLatestStash: () => void;
+    abortMerge: () => void;
+    abortRebase: () => void;
+};
+
+/** Handler bundle for the More actions menu and its dropdown portion. */
+type MoreActionsHandlers = {
+    handleSync: () => void;
+    handleFetch: () => void;
+    handlePull: () => void;
+    handlePush: () => void;
+    stageAllChanges: () => void;
+    unstageAllChanges: () => void;
+    stashChanges: () => void;
+    popLatestStash: () => void;
+    abortMerge: () => void;
+    abortRebase: () => void;
+    openRemoteDialog: () => void;
+    setIsGitRepo: (value: boolean) => void;
+};
 
 /** Trigger button for the More actions menu, split out to bound JSX depth. */
 const MoreActionsMenuTrigger = () => (
@@ -1124,20 +1165,7 @@ const MoreActionsDropdown = ({
     abortRebase,
     openRemoteDialog,
     setIsGitRepo,
-}: {
-    handleSync: () => void;
-    handleFetch: () => void;
-    handlePull: () => void;
-    handlePush: () => void;
-    stageAllChanges: () => void;
-    unstageAllChanges: () => void;
-    stashChanges: () => void;
-    popLatestStash: () => void;
-    abortMerge: () => void;
-    abortRebase: () => void;
-    openRemoteDialog: () => void;
-    setIsGitRepo: (value: boolean) => void;
-}) => (
+}: MoreActionsHandlers) => (
     <DropdownMenu modal={false}>
         <MoreActionsMenuTrigger />
         <DropdownMenuContent align="end" className="w-48">
@@ -1162,49 +1190,10 @@ const MoreActionsDropdown = ({
 );
 
 /** More actions menu for the panel header: sync, staging, stash, merge, and remotes items. */
-const MoreActionsMenu = ({
-    handleSync,
-    handleFetch,
-    handlePull,
-    handlePush,
-    stageAllChanges,
-    unstageAllChanges,
-    stashChanges,
-    popLatestStash,
-    abortMerge,
-    abortRebase,
-    openRemoteDialog,
-    setIsGitRepo,
-}: {
-    handleSync: () => void;
-    handleFetch: () => void;
-    handlePull: () => void;
-    handlePush: () => void;
-    stageAllChanges: () => void;
-    unstageAllChanges: () => void;
-    stashChanges: () => void;
-    popLatestStash: () => void;
-    abortMerge: () => void;
-    abortRebase: () => void;
-    openRemoteDialog: () => void;
-    setIsGitRepo: (value: boolean) => void;
-}) => (
+const MoreActionsMenu = (props: MoreActionsHandlers) => (
     <Tooltip content="More actions">
         <span className="inline-flex">
-            <MoreActionsDropdown
-                handleSync={handleSync}
-                handleFetch={handleFetch}
-                handlePull={handlePull}
-                handlePush={handlePush}
-                stageAllChanges={stageAllChanges}
-                unstageAllChanges={unstageAllChanges}
-                stashChanges={stashChanges}
-                popLatestStash={popLatestStash}
-                abortMerge={abortMerge}
-                abortRebase={abortRebase}
-                openRemoteDialog={openRemoteDialog}
-                setIsGitRepo={setIsGitRepo}
-            />
+            <MoreActionsDropdown {...props} />
         </span>
     </Tooltip>
 );
@@ -1226,23 +1215,11 @@ const PanelHeaderActions = ({
     abortRebase,
     openRemoteDialog,
     setIsGitRepo,
-}: {
+}: PanelSyncHandlers & {
     embedded: boolean;
     project_path: string | null | undefined;
-    refresh: (opts?: { track?: boolean }) => void;
-    handleSync: () => void;
-    handleFetch: () => void;
-    handlePull: () => void;
-    handlePush: () => void;
-    stageAllChanges: () => void;
-    unstageAllChanges: () => void;
-    stashChanges: () => void;
-    popLatestStash: () => void;
-    abortMerge: () => void;
-    abortRebase: () => void;
     openRemoteDialog: () => void;
-    setIsGitRepo: (value: boolean) => void;
-}) => (
+    setIsGitRepo: (value: boolean) => void;}) => (
     <div className="flex shrink-0 items-center gap-0.5">
     <Tooltip content="Refresh Repository">
         <Button variant="ghost" size="icon" className="w-6 h-6 hover:bg-panel-hover" onClick={() => refresh()}>
@@ -1492,25 +1469,13 @@ const PanelHeader = ({
 );
 
 /** Embedded toolbar or panel header for the source chrome. */
-const SourceChromeHeaderSlot = ({ embedded, active, isGitRepo, project_path, refresh, handlePull, handlePush, handleSync, handleFetch, stageAllChanges, unstageAllChanges, stashChanges, popLatestStash, abortMerge, abortRebase, openRemoteDialog, setIsGitRepo }: {
+const SourceChromeHeaderSlot = ({ embedded, active, isGitRepo, project_path, refresh, handlePull, handlePush, handleSync, handleFetch, stageAllChanges, unstageAllChanges, stashChanges, popLatestStash, abortMerge, abortRebase, openRemoteDialog, setIsGitRepo }: PanelSyncHandlers & {
     embedded: boolean;
     active: boolean;
     isGitRepo: boolean;
     project_path: string | null | undefined;
-    refresh: (opts?: { track?: boolean }) => void;
-    handlePull: () => void;
-    handlePush: () => void;
-    handleSync: () => void;
-    handleFetch: () => void;
-    stageAllChanges: () => void;
-    unstageAllChanges: () => void;
-    stashChanges: () => void;
-    popLatestStash: () => void;
-    abortMerge: () => void;
-    abortRebase: () => void;
     openRemoteDialog: () => void;
-    setIsGitRepo: (value: boolean) => void;
-}) => (
+    setIsGitRepo: (value: boolean) => void;}) => (
     <>
         {embedded && active && isGitRepo ? (
             <EmbeddedChromeActions refresh={refresh} handlePull={handlePull} handlePush={handlePush} handleSync={handleSync} />
@@ -1547,11 +1512,9 @@ const SourceConflictBannerSlot = ({ changes, gitRepo, conflictHelp, conflictHelp
     runConflictHelp: () => void;
     refresh: (opts?: { track?: boolean }) => void;
 }) => (
-    <>
-        {changes.some((c) => c.status === "C") && gitRepo ? (
+        changes.some((c) => c.status === "C") && gitRepo ? (
             <ConflictBanner gitRepo={gitRepo} conflictHelp={conflictHelp} conflictHelpLoading={conflictHelpLoading} runConflictHelp={runConflictHelp} refresh={refresh} />
-        ) : null}
-    </>
+        ) : null
 );
 
 /** Repository selector slot, shown only for multi-repo workspaces. */
@@ -1562,11 +1525,9 @@ const SourceRepoSelectorSlot = ({ hasMultipleRepos, isGitRepo, repos, activeRepo
     activeRepoPath: string | null;
     setActiveRepo: (path: string) => void;
 }) => (
-    <>
-        {hasMultipleRepos && isGitRepo ? (
+        hasMultipleRepos && isGitRepo ? (
             <RepoSelector repos={repos} activeRepoPath={activeRepoPath} setActiveRepo={setActiveRepo} />
-        ) : null}
-    </>
+        ) : null
 );
 
 /** Chrome rendered above the source panel: embedded toolbar, panel header, conflict banner, and repo selector. */
@@ -1967,7 +1928,7 @@ const CommitComposer = ({
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
             e.preventDefault();
-            void handleCommit(false, { promptSyncAfter: true });
+            handleCommit(false, { promptSyncAfter: true }).catch(() => undefined);
         }
     };
     return (
@@ -2324,6 +2285,51 @@ const NotGitRepo = ({
 </div>
 );
 
+/** Props for the embedded source body: chrome, diff, and change-list state. */
+interface EmbeddedSourceBodyProps {
+    sourceChrome: React.ReactNode;
+    diffFile: { path: string; staged: boolean } | null;
+    setDiffFile: (value: { path: string; staged: boolean } | null) => void;
+    active: boolean;
+    diffLoading: boolean;
+    diffOriginal: string;
+    diffModified: string;
+    sideBySide: boolean;
+    setSideBySide: (value: boolean | ((previous: boolean) => boolean)) => void;
+    needsSync: boolean;
+    hasRemote: boolean;
+    handlePush: () => void;
+    handleSync: () => void;
+    stagedChanges: GitFileParams[];
+    unstagedChanges: GitFileParams[];
+    isChangesOpen: boolean;
+    setIsChangesOpen: (value: boolean) => void;
+    handleToggleAllChanges: () => void;
+    refresh: (opts?: { track?: boolean }) => void;
+    handleShowDiff: (path: string, staged: boolean) => void;
+    gitRepo: string | null;
+    lastCommit: GitLogEntry | null;
+    currentBranch: string;
+    commitTitle: string;
+    setCommitTitle: (value: string) => void;
+    commitDescription: string;
+    setCommitDescription: (value: string) => void;
+    commitSuggestionStatus: "idle" | "loading";
+    changes: GitFileParams[];
+    handleGenerateCommitMessage: () => void;
+    handleCommit: CommitNow;
+}
+
+/** Props for the source body switch: the embedded body props plus repo discovery state. */
+interface SourceBodyProps extends EmbeddedSourceBodyProps {
+    reposLoading: boolean;
+    scmRepoPath: string | null;
+    isGitRepo: boolean;
+    embedded: boolean;
+    project_path: string | null | undefined;
+    setIsGitRepo: (value: boolean) => void;
+}
+
 /** Embedded source body: change list and commit footer beside the diff pane. */
 const EmbeddedSourceBody = ({
     sourceChrome,
@@ -2357,39 +2363,7 @@ const EmbeddedSourceBody = ({
     changes,
     handleGenerateCommitMessage,
     handleCommit,
-}: {
-    sourceChrome: React.ReactNode;
-    diffFile: { path: string; staged: boolean } | null;
-    setDiffFile: (value: { path: string; staged: boolean } | null) => void;
-    active: boolean;
-    diffLoading: boolean;
-    diffOriginal: string;
-    diffModified: string;
-    sideBySide: boolean;
-    setSideBySide: (value: boolean | ((previous: boolean) => boolean)) => void;
-    needsSync: boolean;
-    hasRemote: boolean;
-    handlePush: () => void;
-    handleSync: () => void;
-    stagedChanges: GitFileParams[];
-    unstagedChanges: GitFileParams[];
-    isChangesOpen: boolean;
-    setIsChangesOpen: (value: boolean) => void;
-    handleToggleAllChanges: () => void;
-    refresh: (opts?: { track?: boolean }) => void;
-    handleShowDiff: (path: string, staged: boolean) => void;
-    gitRepo: string | null;
-    lastCommit: GitLogEntry | null;
-    currentBranch: string;
-    commitTitle: string;
-    setCommitTitle: (value: string) => void;
-    commitDescription: string;
-    setCommitDescription: (value: string) => void;
-    commitSuggestionStatus: "idle" | "loading";
-    changes: GitFileParams[];
-    handleGenerateCommitMessage: () => void;
-    handleCommit: CommitNow;
-}) => (
+}: EmbeddedSourceBodyProps) => (
     <Panel
         direction="horizontal"
         paneGap="var(--workbench-gap)"
@@ -2564,83 +2538,34 @@ const PanelSourceBody = ({
 );
 
 /** Source body switch: loading, no-repo, embedded, and panel states in original order. */
-const SourceBody = ({
-    reposLoading,
-    scmRepoPath,
-    isGitRepo,
-    embedded,
-    project_path,
-    setIsGitRepo,
-    sourceChrome,
-    diffFile,
-    setDiffFile,
-    active,
-    diffLoading,
-    diffOriginal,
-    diffModified,
-    sideBySide,
-    setSideBySide,
-    needsSync,
-    hasRemote,
-    handlePush,
-    handleSync,
-    stagedChanges,
-    unstagedChanges,
-    isChangesOpen,
-    setIsChangesOpen,
-    handleToggleAllChanges,
-    refresh,
-    handleShowDiff,
-    gitRepo,
-    lastCommit,
-    currentBranch,
-    commitTitle,
-    setCommitTitle,
-    commitDescription,
-    setCommitDescription,
-    commitSuggestionStatus,
-    changes,
-    handleGenerateCommitMessage,
-    handleCommit,
-}: {
-    reposLoading: boolean;
-    scmRepoPath: string | null;
-    isGitRepo: boolean;
-    embedded: boolean;
-    project_path: string | null | undefined;
-    setIsGitRepo: (value: boolean) => void;
-    sourceChrome: React.ReactNode;
-    diffFile: { path: string; staged: boolean } | null;
-    setDiffFile: (value: { path: string; staged: boolean } | null) => void;
-    active: boolean;
-    diffLoading: boolean;
-    diffOriginal: string;
-    diffModified: string;
-    sideBySide: boolean;
-    setSideBySide: (value: boolean | ((previous: boolean) => boolean)) => void;
-    needsSync: boolean;
-    hasRemote: boolean;
-    handlePush: () => void;
-    handleSync: () => void;
-    stagedChanges: GitFileParams[];
-    unstagedChanges: GitFileParams[];
-    isChangesOpen: boolean;
-    setIsChangesOpen: (value: boolean) => void;
-    handleToggleAllChanges: () => void;
-    refresh: (opts?: { track?: boolean }) => void;
-    handleShowDiff: (path: string, staged: boolean) => void;
-    gitRepo: string | null;
-    lastCommit: GitLogEntry | null;
-    currentBranch: string;
-    commitTitle: string;
-    setCommitTitle: (value: string) => void;
-    commitDescription: string;
-    setCommitDescription: (value: string) => void;
-    commitSuggestionStatus: "idle" | "loading";
-    changes: GitFileParams[];
-    handleGenerateCommitMessage: () => void;
-    handleCommit: CommitNow;
-}) => (
+const SourceBody = (props: SourceBodyProps) => {
+    const {
+        reposLoading,
+        scmRepoPath,
+        isGitRepo,
+        embedded,
+        project_path,
+        setIsGitRepo,
+        stagedChanges,
+        unstagedChanges,
+        isChangesOpen,
+        setIsChangesOpen,
+        handleToggleAllChanges,
+        refresh,
+        handleShowDiff,
+        gitRepo,
+        lastCommit,
+        currentBranch,
+        commitTitle,
+        setCommitTitle,
+        commitDescription,
+        setCommitDescription,
+        commitSuggestionStatus,
+        changes,
+        handleGenerateCommitMessage,
+        handleCommit,
+    } = props;
+    return (
     <div className="flex-1 flex flex-col overflow-hidden">
         {reposLoading && !scmRepoPath ? (
             <div className="flex h-full items-center justify-center p-4 text-sm text-text-muted">
@@ -2649,39 +2574,7 @@ const SourceBody = ({
         ) : !isGitRepo ? (
             <NotGitRepo project_path={project_path} setIsGitRepo={setIsGitRepo} />
         ) : embedded ? (
-            <EmbeddedSourceBody
-                sourceChrome={sourceChrome}
-                diffFile={diffFile}
-                setDiffFile={setDiffFile}
-                active={active}
-                diffLoading={diffLoading}
-                diffOriginal={diffOriginal}
-                diffModified={diffModified}
-                sideBySide={sideBySide}
-                setSideBySide={setSideBySide}
-                needsSync={needsSync}
-                hasRemote={hasRemote}
-                handlePush={handlePush}
-                handleSync={handleSync}
-                stagedChanges={stagedChanges}
-                unstagedChanges={unstagedChanges}
-                isChangesOpen={isChangesOpen}
-                setIsChangesOpen={setIsChangesOpen}
-                handleToggleAllChanges={handleToggleAllChanges}
-                refresh={refresh}
-                handleShowDiff={handleShowDiff}
-                gitRepo={gitRepo}
-                lastCommit={lastCommit}
-                currentBranch={currentBranch}
-                commitTitle={commitTitle}
-                setCommitTitle={setCommitTitle}
-                commitDescription={commitDescription}
-                setCommitDescription={setCommitDescription}
-                commitSuggestionStatus={commitSuggestionStatus}
-                changes={changes}
-                handleGenerateCommitMessage={handleGenerateCommitMessage}
-                handleCommit={handleCommit}
-            />
+            <EmbeddedSourceBody {...props} />
         ) : (
             <PanelSourceBody
                 stagedChanges={stagedChanges}
@@ -2705,7 +2598,8 @@ const SourceBody = ({
             />
         )}
     </div>
-);
+    );
+};
 
 /** Drop stale status when the project or repo changes; runs during render like the inline pattern it replaces. */
 const useResetStatusOnRepoChange = (repoKey: string, resetStatus: () => void) => {
@@ -2721,9 +2615,7 @@ const SourceChromeSlot = ({ embedded, isGitRepo, children }: {
     embedded: boolean;
     isGitRepo: boolean;
     children: React.ReactNode;
-}) => (
-    <>{!(embedded && isGitRepo) ? children : null}</>
-);
+}) => (!(embedded && isGitRepo) ? children : null);
 
 /** Source Control panel for one project: changes, branches, remotes, and commits. */
 const Source = ({
@@ -2810,7 +2702,7 @@ const refresh = useGitStatusRefresh({
 
     useEffect(() => {
         /** Refresh on the window-level git-refresh event (staging, discard, repo switch). */
-        const handleGitRefresh = () => { void refresh(); };
+        const handleGitRefresh = () => { refresh().catch(() => undefined); };
         window.addEventListener("bettershape-git-refresh", handleGitRefresh);
         return () => window.removeEventListener("bettershape-git-refresh", handleGitRefresh);
     }, [refresh]);

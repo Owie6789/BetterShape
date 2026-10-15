@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// skipcq: JS-0833
 /**
  * Launch the full BetterShape UI in a plain browser (no Tauri, no Rust).
  *
@@ -14,14 +13,11 @@
  * Seed a fake open project instead of the welcome screen:
  *   open http://localhost:48921/?seed=project
  */
-import { spawn, spawnSync } from "node:child_process";
-import { createRequire } from "node:module";
-import { fileURLToPath } from "node:url";
-
-const require = createRequire(import.meta.url);
+const { spawn, spawnSync } = require("node:child_process");
+const { join } = require("node:path");
 // Node + resolved entries instead of `npm`/`npx` via PATH (see build-preview).
 const nextBin = require.resolve("next/dist/bin/next");
-const runtimeScript = fileURLToPath(new URL("../build/preview.mjs", import.meta.url));
+const runtimeScript = join(__dirname, "../build/preview.mjs");
 
 const port = process.env.PORT ?? "48921";
 const host = process.env.HOST ?? "127.0.0.1";

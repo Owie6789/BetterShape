@@ -671,3 +671,15 @@ Playwright 25 passed in E2E_STATIC=1 mode; serve-static smoke check
 returns 200 for / under the renamed serve-static.js; npm run
 skills:verify 53 of 53; npm ci pass. Cargo is unavailable in the
 sandbox and no Rust source changed.
+
+Correction recorded during the Sonar duplication fix: a scripted edit
+removed `name,` lines by substring match across the whole of
+features/git/ui/source/source.tsx instead of only inside the SourceBody
+destructure, which dropped `hasRemote` from the runPostCommit call in
+commitNow. Root cause: global substring replacement without a scoped
+range. Corrected understanding: scope scripted replacements to an
+explicit index range and re-run tsc plus ESLint immediately after.
+Behaviour change: none; the line was restored, and tsc and ESLint pass.
+The Sonar duplication fix itself shares prop types (PanelSyncHandlers,
+MoreActionsHandlers, EmbeddedSourceBodyProps, SourceBodyProps) and
+spreads props into EmbeddedSourceBody instead of repeating the lists.

@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// skipcq: JS-0833
 /**
  * Agent QA entry point: run the whole Playwright browser suite, then print
  * a compact machine-friendly summary (counts, failing specs, artifact
@@ -12,12 +11,9 @@
  * `playwright-report/` (HTML, for humans) and `test-results/results.json`
  * (JSON, for agents/tooling).
  */
-import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
-
-const require = createRequire(import.meta.url);
+const { spawnSync } = require("node:child_process");
+const { existsSync, readFileSync } = require("node:fs");
+const { dirname, join } = require("node:path");
 // `playwright/cli.js` is not an exported subpath, resolve via package.json.
 // Spawning node directly avoids `npx` PATH lookup entirely.
 const playwrightCli = join(dirname(require.resolve("playwright/package.json")), "cli.js");

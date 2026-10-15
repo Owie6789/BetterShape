@@ -23,7 +23,7 @@ const eslintConfig = defineConfig([
   },
   {
     // CommonJS build tooling, run directly by node, `require` is correct here.
-    files: ["src-tauri/scripts/**/*.js", "scripts/**/*.mjs"],
+    files: ["src-tauri/scripts/**/*.js", "scripts/**/*.cjs"],
     rules: {
       "@typescript-eslint/no-require-imports": "off",
     },

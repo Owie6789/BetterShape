@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// skipcq: JS-0833
 /**
  * Serve the Browser Preview static export (`out/`) over HTTP.
  *
@@ -11,12 +10,11 @@
  *
  * Usage: npm run build:preview && npm run preview:browser
  */
-import { createServer } from "node:http";
-import { createReadStream, existsSync, realpathSync, statSync } from "node:fs";
-import { extname, join, normalize, sep } from "node:path";
-import { fileURLToPath } from "node:url";
+const { createServer } = require("node:http");
+const { createReadStream, existsSync, realpathSync, statSync } = require("node:fs");
+const { extname, join, normalize, sep } = require("node:path");
 
-const root = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "out");
+const root = join(__dirname, "..", "..", "out");
 // Check existence before realpathSync: on a fresh checkout (no `out/` yet)
 // realpathSync throws ENOENT and hides the build instruction below.
 if (!existsSync(join(root, "index.html"))) {

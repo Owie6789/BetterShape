@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// skipcq: JS-0833
 /**
  * Build the statically-exportable Browser Preview bundle into `out/`.
  *
@@ -10,15 +9,12 @@
  * `npm run tauri:build` runs the plain `npm run build` without the flag, and
  * the mock installer additionally refuses to run inside a real Tauri webview.
  */
-import { spawnSync } from "node:child_process";
-import { createRequire } from "node:module";
-import { fileURLToPath } from "node:url";
-
-const require = createRequire(import.meta.url);
+const { spawnSync } = require("node:child_process");
+const { join } = require("node:path");
 // Spawn Node with resolved entry files instead of `npm`/`npx` from PATH:
 // no shell shim, no PATH hijack surface (and identical behavior on win32).
 const nextBin = require.resolve("next/dist/bin/next");
-const runtimeScript = fileURLToPath(new URL("../build/preview.mjs", import.meta.url));
+const runtimeScript = join(__dirname, "../build/preview.mjs");
 
 const env = { ...process.env, NEXT_PUBLIC_BROWSER_PREVIEW: "1" };
 
