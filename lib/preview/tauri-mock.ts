@@ -378,7 +378,6 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         if (tabsMoved) emitProjectState();
     };
 
-    /** Whether a fake-tree path can move or copy to the target. */
     /** Whether two paths are both set and different. */
     const distinctPaths = (a: string, b: string): boolean => a !== "" && b !== "" && a !== b;
 
