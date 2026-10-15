@@ -352,3 +352,15 @@ Actions taken in response:
    messages leaking to unknown IDs. The message list is now a single
    `PREVIEW_MESSAGES` constant shared by both handlers so the two
    copies cannot drift.
+
+Correction to the remediation note above: the shipped DeepSource
+analyzer reference (fetched this session) documents
+`analyzers.meta` options for JavaScript, so the `.deepsource.toml`
+now uses them: `module_system = "es-modules"` for the .mjs parse
+errors, and `skip_doc_coverage` for the internal construct classes
+(arrows, function expressions, method definitions, class expressions)
+where JS-D1001 would force boilerplate. Exported declarations keep
+the documentation requirement. `eslint.config.mjs` also gained the
+`// skipcq: JS-0833` first line its sibling scripts already carry.
+The next DeepSource run on the pushed head arbitrates whether branch
+config is honored before default-branch landing.

@@ -10,15 +10,20 @@ test_patterns = [
 name = "javascript"
 enabled = true
 
-  # JS-D1001 (documentation comment required on every function) conflicts
-  # with AGENTS.md: comments must explain a non-obvious constraint,
-  # provenance, or workaround, never restate the code. Adding boilerplate
-  # doc comments to hundreds of internal functions would lower comment
-  # quality to satisfy a metric. The exported preview surface carries
-  # real doc comments; internal helpers rely on descriptive names.
-  [[analyzers.rules]]
-  rule_id = "JS-D1001"
-  enabled = false
+  [analyzers.meta]
+  plugins = ["react"]
+  environment = ["nodejs", "browser", "vitest"]
+  # DeepSource parses .mjs as CommonJS by default; this repo is ESM, so
+  # parse errors on eslint.config.mjs and scripts/qa/*.mjs are false
+  # positives until this is set.
+  module_system = "es-modules"
+  # JS-D1001 demands a doc comment on every function. AGENTS.md forbids
+  # comments that restate the code and reserves them for non-obvious
+  # constraints, provenance, and workarounds. Skip the construct classes
+  # where the metric would force boilerplate: internal arrow helpers,
+  # local callbacks, method definitions, and class expressions. Exported
+  # declarations keep the requirement.
+  skip_doc_coverage = ["arrow-function-expression", "function-expression", "method-definition", "class-expression"]
 
 [[analyzers]]
 name = "rust"
