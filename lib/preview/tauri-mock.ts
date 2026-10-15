@@ -379,9 +379,19 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
     };
 
     /** Whether a fake-tree path can move or copy to the target. */
+    /** Whether two paths are both set and different. */
+    const distinctPaths = (a: string, b: string): boolean => a !== "" && b !== "" && a !== b;
+
+    /** Whether a fake-tree path is a known file or directory. */
+    const pathKnown = (path: string): boolean => path in state.dirs || path in state.files;
+
     const canRelocate = (oldPath: string, newPath: string): boolean => {
-        const isDir = oldPath in state.dirs;
-        return Boolean(oldPath && newPath && oldPath !== newPath && (isDir || oldPath in state.files));
+        if (!distinctPaths(oldPath, newPath)) return false;
+        if (!pathKnown(oldPath)) return false;
+        // fs::rename fails when the destination parent does not exist; the
+        // fake tree mirrors that instead of hiding the file in an unlisted
+        // directory.
+        return parentDirOf(newPath) in state.dirs;
     };
 
     /** Write a relocated subtree snapshot into the fake tree. */
