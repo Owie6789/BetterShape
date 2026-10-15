@@ -1,0 +1,908 @@
+//! Primary chat turn entrypoint.
+use crate::agent::context::{
+    build_context_breakdown, build_context_with_options, context_options_for_query,
+};
+use super::history;
+use super::journals;
+use super::logging;
+use super::messages;
+use super::run_turn;
+use super::streaming;
+use super::titles::{
+    apply_generated_title, maybe_regenerate_title, text_for_title,
+    title_from_message,
+};
+use crate::agent::tools::schema;
+use crate::agent::model_router;
+use crate::agent::models::{AgentState, AutoRunMode, ChatMessage, TurnPolicy};
+use std::collections::HashMap;
+use crate::agent::prompts;
+use crate::app_state::AppState;
+use crate::commands::pty::PtyState;
+use crate::core::error::AppError;
+use reqwest::Client;
+use serde_json::json;
+use tauri::{Emitter, Manager};
+
+use history::now_f64;
+
+const MODEL_DEFAULT: &str = "auto";
+const MODEL_TITLE_GEN: &str = "auto";
+
+#[tauri::command]
+pub async fn send_chat_message(
+    message: String,
+    model: Option<String>,
+    mode: Option<String>,
+    custom_system_prompt: Option<String>,
+    custom_rules: Option<String>,
+    access_token: Option<String>,
+    _design_options: Option<crate::commands::preview_render::DesignAgentOptions>,
+    review_adversarial_enabled: Option<bool>,
+    auto_run_mode: Option<String>,
+    require_edit_approval: Option<bool>,
+    protect_destructive_git: Option<bool>,
+    plugin_approval_default: Option<String>,
+    plugin_approvals: Option<HashMap<String, String>>,
+    plugin_disabled_actions: Option<HashMap<String, Vec<String>>>,
+    plugin_auto_allow: Option<Vec<String>>,
+    display_message: Option<String>,
+    reasoning_effort: Option<String>,
+    service_tier: Option<String>,
+    models: Option<Vec<String>>,
+    conversation_kind: Option<String>,
+    subagent_models: Option<Vec<String>>,
+    subagent_default_model: Option<String>,
+    state: tauri::State<'_, AgentState>,
+    app_state: tauri::State<'_, AppState>,
+    index_state: tauri::State<'_, crate::agent::index::IndexState>,
+    mcp_state: tauri::State<'_, crate::mcp::McpState>,
+    pty_state: tauri::State<'_, PtyState>,
+    app_handle: tauri::AppHandle,
+) -> Result<String, AppError> {
+    let review_adversarial_on = review_adversarial_enabled.unwrap_or(false);
+    let raw_model = model
+        .filter(|m| !m.trim().is_empty())
+        .unwrap_or_else(|| MODEL_DEFAULT.to_string());
+    let llm_provider = streaming::LlmProvider::Shape;
+    let auth_token = access_token.filter(|t| !t.trim().is_empty()).ok_or_else(|| {
+        AppError::Env("Sign in to Shape to use AI chat.".to_string())
+    })?;
+    let client = Client::new();
+    let current_proj_path = app_state.0.lock()?.project_path.clone();
+    let selected_auto = model_router::is_auto_selection(&raw_model);
+    let model_to_use = model_router::normalize_model(&raw_model);
+    let proxy_model = model_router::proxy_model_id(&raw_model);
+    let history_has_images = state
+        .history
+        .lock()
+        .map(|h| {
+            h.iter().any(|m| {
+                m.role == "user" && model_router::content_has_images(&m.content)
+            })
+        })
+        .unwrap_or(false);
+    let has_images = model_router::content_has_images(&message) || history_has_images;
+    let mode_to_use = mode.unwrap_or_else(|| "Ask".to_string());
+    // Auto stays on DeepSeek locally. The website maps `auto` for billing.
+    // Vision-capable picks keep pixels; text-only models get a caption pass.
+    let effort_raw = reasoning_effort
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("low");
+    let effort_norm = match effort_raw.to_ascii_lowercase().as_str() {
+        "super" => "super",
+        "max" => "max",
+        "ultra" => "ultra",
+        "high" | "medium" => "high",
+        "low" | "fast" => "low",
+        _ => "low",
+    }
+    .to_string();
+    let tier_norm = service_tier
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| {
+            let t = s.to_ascii_lowercase();
+            if t == "fast" || t == "priority" {
+                "priority".to_string()
+            } else if t == "flex" {
+                "flex".to_string()
+            } else {
+                t
+            }
+        });
+
+    logging::info(
+        "chat",
+        &format!(
+            "send_chat_message: provider={} url={} model={} (selected={}), mode={}, msg_len={}",
+            llm_provider.label(),
+            llm_provider.completions_url(),
+            model_to_use,
+            if selected_auto { "auto" } else { &raw_model },
+            mode_to_use,
+            message.len()
+        ),
+    );
+    let hist_bytes = state
+        .history
+        .lock()
+        .ok()
+        .map(|h| h.iter().map(|m| m.content.len()).sum::<usize>())
+        .unwrap_or(0);
+    let hist_len = state.history.lock().ok().map(|h| h.len()).unwrap_or(0);
+    crate::core::ram_debug::snapshot(
+        "send_chat_start",
+        &format!(
+            "mode={mode_to_use} model={model_to_use} msg_len={} hist_msgs={hist_len} hist_bytes={hist_bytes} project={:?}",
+            message.len(),
+            current_proj_path
+        ),
+    );
+
+    let family = model_router::model_family(&model_to_use);
+    let family_prompt = prompts::family_prompt(family);
+
+    // Case-insensitive so "visual" / "Visual" (and legacy "design") both attach DESIGN.md.
+    let mode_prompt = match mode_to_use.to_ascii_lowercase().as_str() {
+        "plan" => prompts::PLAN_MD,
+        "visual" | "design" => prompts::DESIGN_MD,
+        "review" => prompts::REVIEW_MD,
+        _ => "",
+    };
+    let _ = conversation_kind;
+    if matches!(
+        mode_to_use.to_ascii_lowercase().as_str(),
+        "visual" | "design"
+    ) {
+        logging::info(
+            "chat",
+            &format!(
+                "Visual mode: attaching DESIGN.md ({} chars) to system prompt",
+                prompts::DESIGN_MD.len()
+            ),
+        );
+    }
+
+    // Project switching: clear history when the user opens a different project.
+    {
+        let mut active_proj = state.current_project.lock()?;
+        if *active_proj != current_proj_path {
+            logging::info(
+                "chat",
+                &format!("Project switched from {:?} to {:?}", active_proj, current_proj_path),
+            );
+            if let Some(old_path) = active_proj.as_ref() {
+                let _ = history::save_current_conversation(&state, old_path);
+            }
+            state.history.lock()?.clear();
+            state.title.lock()?.take();
+            *state.history_summary.lock()? = None;
+            *state.current_conversation_id.lock()? = None;
+            *state.conversation_kind.lock()? = None;
+            state.clear_design_preview_state();
+            state.clear_file_checkpoints();
+            *active_proj = current_proj_path.clone();
+        }
+    }
+
+    if state.conversation_kind.lock()?.is_none() {
+        *state.conversation_kind.lock()? = Some("chat".to_string());
+    }
+
+    let stored_user_message = display_message
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(&message)
+        .to_string();
+
+    {
+        let mut hist = state.history.lock()?;
+        hist.push(ChatMessage {
+            role: "user".to_string(),
+            content: stored_user_message.clone(),
+            timestamp: now_f64(),
+            stats: None,
+            model: Some(model_to_use.clone()),
+            feedback: None,
+            hidden: false,
+        });
+    }
+
+    // Mid-chat model switch: prior turns may carry a different family.
+    let switch_hint = {
+        let hist = state.history.lock()?;
+        let prev_family = hist
+            .iter()
+            .rev()
+            .skip(1) // skip the user message we just pushed
+            .find_map(|m| m.model.as_deref().map(model_router::model_family));
+        prev_family.and_then(|prev| model_router::mid_chat_switch_hint(prev, family))
+    };
+
+    // Promote draft chats immediately (id + title) so switching away mid-generation
+    // cannot drop the conversation while the backend is still working.
+    let owned_conversation_id = {
+        let mut guard = state.current_conversation_id.lock()?;
+        if guard.is_none() {
+            *guard = Some(format!("{}", now_f64() as u64));
+        }
+        guard.clone().expect("conversation id just ensured")
+    };
+
+    let _ = models;
+
+    crate::agent::subagents::set_policy(&state, subagent_models, subagent_default_model);
+
+    let turn_id = uuid::Uuid::new_v4().to_string();
+    let conversation_id = Some(owned_conversation_id.clone());
+    state.reset_turn_meter(&turn_id);
+    // Stale approvals from an earlier turn must never resolve this turn's items.
+    // Leave them alone when another chat is still generating.
+    if !state.any_in_flight() {
+        state.clear_pending_approvals();
+    }
+    let turn_policy = TurnPolicy {
+        auto_run_mode: AutoRunMode::from_setting(auto_run_mode.as_deref()),
+        require_edit_approval: require_edit_approval.unwrap_or(false),
+        protect_destructive_git: protect_destructive_git.unwrap_or(true),
+        plugin_approval_default: AutoRunMode::from_setting(
+            plugin_approval_default.as_deref().or(Some("ask")),
+        ),
+        plugin_approvals: plugin_approvals
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(k, v)| (k.to_ascii_lowercase(), AutoRunMode::from_setting(Some(&v))))
+            .collect(),
+        plugin_disabled_actions: plugin_disabled_actions
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(k, v)| (k.to_ascii_lowercase(), v))
+            .collect(),
+        plugin_auto_allow: plugin_auto_allow
+            .unwrap_or_default()
+            .into_iter()
+            .map(|s| s.trim().to_ascii_lowercase())
+            .filter(|s| !s.is_empty())
+            .collect(),
+    };
+    state.set_turn_policy_for(&owned_conversation_id, turn_policy);
+    if !state.try_begin_in_flight(turn_id.clone(), Some(owned_conversation_id.clone())) {
+        // Roll back the optimistic user message we just pushed.
+        if let Ok(mut hist) = state.history.lock() {
+            if hist
+                .last()
+                .map(|m| m.role == "user" && m.content == stored_user_message)
+                .unwrap_or(false)
+            {
+                hist.pop();
+            }
+        }
+        return Err(AppError::Message(
+            "This chat is already generating. Stop it or wait before sending another message."
+                .to_string(),
+        ));
+    }
+
+    if let Some(ref project) = current_proj_path {
+        crate::commands::stats::bump_event(project, "ai_chat_turns");
+    }
+
+    journals::save_turn_journal(&journals::TurnJournal {
+        conversation_id: owned_conversation_id.clone(),
+        turn_id: turn_id.clone(),
+        project_path: state.current_project.lock().ok().and_then(|p| p.clone()),
+        status: "running".to_string(),
+        updated_at: now_f64(),
+        subagent_ids: Vec::new(),
+        note: None,
+    });
+
+    // Fresh cancel token for this conversation. Other chats keep their own.
+    let cancel = state.begin_cancel_token(&owned_conversation_id);
+
+    let needs_title = state.title.lock()?.is_none();
+    let provisional_title = if needs_title {
+        let provisional = title_from_message(&message);
+        *state.title.lock()? = Some(provisional.clone());
+        let turns = state
+            .history
+            .lock()?
+            .iter()
+            .filter(|m| m.role == "user")
+            .count() as u32;
+        state.set_title_meta(false, turns.max(1));
+        provisional
+    } else {
+        state
+            .title
+            .lock()?
+            .clone()
+            .unwrap_or_else(|| title_from_message(&message))
+    };
+
+    let _ = app_handle.emit(
+        "chat_title",
+        json!({
+            "title": &provisional_title,
+            "conversationId": &owned_conversation_id,
+        }),
+    );
+    let _ = app_handle.emit(
+        "chat_started",
+        json!({
+            "turnId": &turn_id,
+            "conversationId": &owned_conversation_id,
+            "title": &provisional_title,
+            "model": &model_to_use,
+            "usedAuto": selected_auto,
+        }),
+    );
+    if let Some(path) = &current_proj_path {
+        let _ = history::save_current_conversation(&state, path);
+    }
+
+    let owned_title = provisional_title.clone();
+
+    // Placeholder is already on screen. Name the chat while the reply generates.
+    if needs_title {
+        let app_for_title = app_handle.clone();
+        let client_for_title = client.clone();
+        let auth_for_title = auth_token.clone();
+        let turn_for_title = turn_id.clone();
+        let conv_for_title = owned_conversation_id.clone();
+        let source_for_title = text_for_title(&message);
+        let provider_for_title = llm_provider.clone();
+        let cancel_for_title = cancel.clone();
+        let project_for_title = current_proj_path.clone();
+        tauri::async_runtime::spawn(async move {
+            apply_generated_title(
+                app_for_title,
+                client_for_title,
+                auth_for_title,
+                turn_for_title,
+                conv_for_title,
+                source_for_title,
+                provider_for_title,
+                cancel_for_title,
+                project_for_title,
+            )
+            .await;
+        });
+    }
+
+    index_state.set_api_context(
+        Some(auth_token.clone()),
+        Some(turn_id.clone()),
+        conversation_id.clone(),
+    );
+    let proxy_base = streaming::ProxyContext::new("chat")
+        .with_provider(llm_provider)
+        .with_turn(Some(turn_id.clone()), conversation_id.clone())
+        .with_project_path(current_proj_path.clone())
+        .with_reasoning_effort(Some(effort_norm.clone()))
+        .with_service_tier(tier_norm.clone());
+
+    let context_opts = context_options_for_query(message.clone(), (*index_state).clone());
+    // Steer and workspace context are independent; overlapping them hid ~2s from first token.
+    let steer_fut = {
+        let auth = auth_token.clone();
+        let msg = message.clone();
+        let mode = mode_to_use.clone();
+        let tid = turn_id.clone();
+        let cid = conversation_id.clone();
+        async move {
+            crate::agent::tools::plugins::fetch_steer(
+                &auth,
+                &msg,
+                &mode,
+                Some(&tid),
+                cid.as_deref(),
+            )
+            .await
+        }
+    };
+    let (steer, ctx_res) = tokio::join!(
+        steer_fut,
+        build_context_with_options(&app_state, context_opts)
+    );
+    let (context_string, _active_file, _project_root) = ctx_res?;
+    logging::debug(
+        "chat",
+        &format!(
+            "Steer packs: workspace={} plugins={} browse={} web={} git={} terminal={} media={}",
+            steer.workspace, steer.plugins, steer.browse, steer.web, steer.git, steer.terminal, steer.media
+        ),
+    );
+    logging::debug("chat", &format!("Context built: {} chars", context_string.len()));
+
+    let mut prompt_parts = vec![prompts::SYSTEM_MD.to_string()];
+    if !family_prompt.trim().is_empty() {
+        prompt_parts.push(format!("\n{}", family_prompt.trim()));
+    }
+    if let Some(hint) = &switch_hint {
+        prompt_parts.push(hint.clone());
+    }
+    // Legacy "system instructions" are folded into rules — one concept for user guidance.
+    let merged_rules = [custom_rules.as_deref(), custom_system_prompt.as_deref()]
+        .iter()
+        .filter_map(|s| s.map(str::trim).filter(|s| !s.is_empty()))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    if !merged_rules.is_empty() {
+        prompt_parts.push(format!("\n<user_rules>\n{}\n</user_rules>", merged_rules));
+    }
+    if matches!(
+        mode_to_use.to_ascii_lowercase().as_str(),
+        "visual" | "design"
+    ) {
+        // No design-options UI anymore — always start a sandbox session for optional previews.
+        state.begin_design_turn(None, &message);
+    }
+    // System prompt stays stable across turns so prompt caching can reuse it.
+    // Mode instructions and workspace context ride on the latest user message.
+    let final_system_prompt = prompt_parts.join("\n");
+
+    let history_snapshot = {
+        let mut snapshot = state.history.lock()?.clone();
+        if messages::history_char_count(&snapshot) > messages::HISTORY_CHAR_BUDGET {
+            let existing = state.history_summary.lock()?.clone();
+            let middle = messages::slice_for_compression(&snapshot);
+            if !middle.is_empty() {
+                let spill_note = crate::agent::tools::spill::spill_history_transcript(
+                    current_proj_path.as_deref().unwrap_or(""),
+                    &middle,
+                );
+                let prompt = format!(
+                    "Summarize this coding assistant conversation for future context. Preserve goals, decisions, files changed, errors fixed, and what the user is working on now. Be concise.\n\n{}",
+                    middle
+                );
+                if let Ok((summary, _, _)) = streaming::complete_chat_with_max_tokens(
+                    &client,
+                    &auth_token,
+                    &prompt,
+                    MODEL_TITLE_GEN,
+                    800,
+                    &proxy_base
+                        .clone()
+                        .with_turn(Some(turn_id.clone()), conversation_id.clone()),
+                )
+                .await
+                {
+                    let merged = match existing {
+                        Some(prev) => format!("{}\n\n{}", prev, summary),
+                        None => summary,
+                    };
+                    let merged = match &spill_note {
+                        Some(path) => format!(
+                            "{merged}\n\n[Full pre-summary transcript spilled to `{path}` — read_file/grep that path if you need details lost in this summary.]"
+                        ),
+                        None => merged,
+                    };
+                    *state.history_summary.lock()? = Some(merged.clone());
+                    snapshot = messages::apply_summary(&snapshot, Some(&merged));
+                    logging::info("chat", "Compressed older chat history into summary");
+                    let _ = app_handle.emit(
+                        "chat_context_summarized",
+                        json!({ "conversationId": conversation_id }),
+                    );
+                }
+            } else if let Some(ref s) = existing {
+                snapshot = messages::apply_summary(&snapshot, Some(s));
+                let _ = app_handle.emit(
+                    "chat_context_summarized",
+                    json!({ "conversationId": conversation_id }),
+                );
+            }
+        }
+        snapshot
+    };
+    let mut api_history = messages::build_api_history(&history_snapshot);
+    if super::caption::should_caption(&model_to_use, has_images) {
+        streaming::emit_chat_status(
+            &app_handle,
+            json!({ "phase": "tool", "label": "Looking at image…" }),
+        );
+        let _ = super::caption::caption_history_images(
+            &mut api_history,
+            &client,
+            &auth_token,
+            &proxy_base,
+            Some(&cancel),
+        )
+        .await;
+    }
+    let mut api_messages =
+        messages::build_messages_json(&final_system_prompt, &api_history, &model_to_use);
+    let mut turn_context = format!("Mode: {mode_to_use}");
+    if matches!(mode_to_use.to_ascii_lowercase().as_str(), "ask" | "plan") {
+        turn_context.push_str(
+            "\nThis turn is read-only. Do not call edit, shell, git commit, browse, or mcp_call. They are blocked.",
+        );
+    }
+    if !mode_prompt.is_empty() {
+        turn_context.push_str("\n\n");
+        turn_context.push_str(mode_prompt);
+    }
+    turn_context.push_str("\n\nCURRENT CONTEXT:\n");
+    turn_context.push_str(&context_string);
+    if !steer.hint.is_empty() {
+        turn_context.push_str("\n");
+        turn_context.push_str(&steer.hint);
+    }
+    turn_context.push_str("\n");
+    turn_context.push_str(&crate::agent::subagents::policy_line(&state));
+    messages::append_turn_context(&mut api_messages, &turn_context);
+
+    let tools = schema::apply_steer_packs(schema::stable_tools(family), &steer);
+    let mcp_tokens: u64 = 0;
+
+    let summarized = state.history_summary.lock().ok().and_then(|g| g.clone());
+    let conversation_json =
+        serde_json::to_string(&messages::build_api_history(&history_snapshot)).unwrap_or_default();
+    let mut breakdown = build_context_breakdown(
+        prompts::SYSTEM_MD,
+        family_prompt,
+        &merged_rules,
+        mode_prompt,
+        &context_string,
+        &tools,
+        &conversation_json,
+        summarized.as_deref(),
+        &model_to_use,
+    );
+    if mcp_tokens > 0 {
+        let tools_tokens = breakdown
+            .get("tools")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        breakdown["mcpTools"] = json!(mcp_tokens);
+        breakdown["tools"] = json!(tools_tokens.saturating_sub(mcp_tokens));
+    }
+    let proxy_base = proxy_base.with_context_breakdown(Some(breakdown.clone()));
+
+    let project_path = current_proj_path.clone().unwrap_or_default();
+    if !project_path.is_empty() && index_state.should_background_index(&project_path) {
+        let _ = index_state.spawn_background_index(app_handle.clone(), project_path.clone());
+    }
+
+    if cancel.is_cancelled() {
+        state.clear_in_flight_if(&turn_id);
+        let _ = app_handle.emit(
+            "chat_complete",
+            json!({
+                "model": model_to_use,
+                "turnId": &turn_id,
+                "conversationId": &owned_conversation_id,
+            }),
+        );
+        if let Some(path) = &current_proj_path {
+            let _ = history::save_current_conversation(&state, path);
+        }
+        return Ok(String::new());
+    }
+
+    let start_time = std::time::Instant::now();
+
+    let turn_outcome = match run_turn::run_agent_turn(run_turn::AgentTurnConfig {
+        client: &client,
+        api_key: &auth_token,
+        api_messages: &mut api_messages,
+        tools: &tools,
+        model: &model_to_use,
+        proxy_model: &proxy_model,
+        mode: &mode_to_use,
+        project_path: &project_path,
+        app_handle: &app_handle,
+        agent_state: &*state,
+        index_state: Some(&*index_state),
+        mcp_state: Some(&*mcp_state),
+        pty_state: Some(&*pty_state),
+        cancel: cancel.clone(),
+        proxy_ctx: proxy_base.clone(),
+        max_loops: run_turn::max_loops_for_mode(&mode_to_use),
+        emit_complete: true,
+    })
+    .await
+    {
+        Ok(outcome) => outcome,
+        Err(e) => {
+            state.clear_in_flight_if(&turn_id);
+            // Always release the UI: without this a failed turn left the frontend
+            // waiting for a chat_complete that never arrived.
+            let _ = app_handle.emit(
+                "chat_complete",
+                json!({
+                    "error": e.to_string(),
+                    "model": model_to_use,
+                    "turnId": &turn_id,
+                    "conversationId": &owned_conversation_id,
+                }),
+            );
+            return Err(e);
+        }
+    };
+
+    let mut final_full_response =
+        crate::agent::tools::browse::finish_browse_markup(turn_outcome.response_text).await;
+    if final_full_response.contains("<browse_session") {
+        let _ = app_handle.emit(
+            "agent-browse",
+            json!({ "id": "live", "status": "stopped" }),
+        );
+    }
+    let loop_count = turn_outcome.loop_count;
+    let interrupt_error = turn_outcome.interrupt_error;
+
+    // Hostile second pass — only after huge writes, never for sidebar nits.
+    let mode_lc = mode_to_use.to_ascii_lowercase();
+    let review_mode_ok = matches!(
+        mode_lc.as_str(),
+        "code" | "visual" | "review" | "agent" | "edit"
+    );
+    if review_adversarial_on
+        && review_mode_ok
+        && !cancel.is_cancelled()
+        && super::adversarial_review::should_run(&final_full_response, turn_outcome.wrote_files)
+    {
+        match super::adversarial_review::run_adversarial_review(
+            &client,
+            &auth_token,
+            &final_full_response,
+            &project_path,
+            &proxy_base,
+        )
+        .await
+        {
+            Ok(xml) => {
+                streaming::emit_stream_token(&app_handle, &proxy_base, xml.clone());
+                final_full_response.push_str(&xml);
+            }
+            Err(e) => {
+                logging::warn("review", &format!("Adversarial review skipped: {e}"));
+            }
+        }
+    }
+
+    // Keep the codebase index fresh after turns that changed files. The scan is
+    // incremental (mtime manifest) and skipped when a job is already running.
+    // Defer briefly so the next user turn isn't fighting disk I/O immediately,
+    // and skip entirely if another turn has already started.
+    if turn_outcome.wrote_files && !project_path.is_empty() {
+        let app_for_index = app_handle.clone();
+        let path_for_index = project_path.clone();
+        let index_clone: crate::agent::index::IndexState = (*index_state).clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(750)).await;
+            // Don't contend with an active agent turn.
+            let busy = app_for_index
+                .try_state::<AgentState>()
+                .map(|s| s.any_in_flight())
+                .unwrap_or(false);
+            if busy {
+                return;
+            }
+            let _ = index_clone.spawn_background_index(app_for_index, path_for_index);
+        });
+    }
+
+    let (total_input_tokens, total_output_tokens) = state.turn_meter_totals(&turn_id);
+    let billed_tokens = total_input_tokens + total_output_tokens;
+    let duration_ms = start_time.elapsed().as_millis() as f64;
+
+    let used_auto = selected_auto;
+
+    let mut assistant_message = ChatMessage {
+        role: "assistant".to_string(),
+        content: final_full_response.clone(),
+        timestamp: now_f64(),
+        stats: Some(crate::agent::models::MessageStats {
+            time_ms: duration_ms,
+            cost: 0.0,
+            tokens: billed_tokens,
+            input_tokens: total_input_tokens,
+            output_tokens: total_output_tokens,
+            credits_charged: None,
+            used_auto: Some(used_auto),
+            reasoning_effort: Some(effort_norm.clone()),
+            mode: Some(mode_to_use.clone()),
+            latency_ms: None,
+            context_breakdown: Some(breakdown.clone()),
+        }),
+        model: Some(model_to_use.clone()),
+        feedback: None,
+        hidden: false,
+    };
+
+    let still_current = {
+        let current = state.current_conversation_id.lock()?.clone();
+        current.as_deref() == Some(owned_conversation_id.as_str())
+    };
+    let still_this_turn = state.in_flight_contains_turn(&turn_id);
+    let was_cancelled = cancel.is_cancelled();
+
+    logging::info(
+        "chat",
+        &format!(
+            "Response complete: {} chars, {} tool loops, {} tokens ({} in / {} out){}",
+            final_full_response.len(),
+            loop_count,
+            billed_tokens,
+            total_input_tokens,
+            total_output_tokens,
+            if was_cancelled { " (cancelled)" } else { "" }
+        ),
+    );
+
+    // Stopped / restored turns must not append — history may already be truncated.
+    if still_current && still_this_turn && !was_cancelled {
+        assistant_message.content = maybe_regenerate_title(
+            &app_handle,
+            &state,
+            &client,
+            &auth_token,
+            &turn_id,
+            conversation_id.as_deref(),
+            &assistant_message.content,
+        )
+        .await;
+        {
+            let mut hist = state.history.lock()?;
+            history::replace_or_push_assistant(&mut hist, assistant_message.clone());
+        }
+
+        let _ = app_handle.emit(
+            "chat_complete",
+            json!({
+                "stats": {
+                    "timeMs": duration_ms,
+                    "cost": 0.0,
+                    "tokens": billed_tokens,
+                    "inputTokens": total_input_tokens,
+                    "outputTokens": total_output_tokens,
+                    "creditsCharged": null,
+                    "usedAuto": used_auto,
+                    "reasoningEffort": &effort_norm,
+                    "mode": &mode_to_use,
+                    "contextBreakdown": breakdown,
+                },
+                "model": model_to_use,
+                "turnId": &turn_id,
+                "conversationId": &owned_conversation_id,
+                "error": interrupt_error,
+                "content": assistant_message.content,
+            }),
+        );
+
+        if let Some(path) = &current_proj_path {
+            let _ = history::save_current_conversation(&state, path);
+        }
+    } else if still_this_turn && !was_cancelled {
+        // User started a new chat or switched conversations while this turn was
+        // finishing — persist under the original id without touching live state.
+        logging::info(
+            "chat",
+            "Turn finished after conversation switch — persisting to original conversation only",
+        );
+        if let Some(path) = &current_proj_path {
+            let mut hist = {
+                let convs = state.conversations.lock()?;
+                convs
+                    .get(path)
+                    .and_then(|list| list.iter().find(|c| c.id == owned_conversation_id))
+                    .map(|c| c.history.clone())
+                    .unwrap_or_default()
+            };
+            history::replace_or_push_assistant(&mut hist, assistant_message.clone());
+            let _ = history::upsert_conversation_snapshot(
+                &state,
+                path,
+                &owned_conversation_id,
+                &owned_title,
+                hist,
+            );
+        }
+        // The open chat is still this turn. Send the same details the menu reads,
+        // even though live history now belongs to whatever the user switched to.
+        let _ = app_handle.emit(
+            "chat_complete",
+            json!({
+                "stats": {
+                    "timeMs": duration_ms,
+                    "cost": 0.0,
+                    "tokens": billed_tokens,
+                    "inputTokens": total_input_tokens,
+                    "outputTokens": total_output_tokens,
+                    "creditsCharged": null,
+                    "usedAuto": used_auto,
+                    "reasoningEffort": &effort_norm,
+                    "mode": &mode_to_use,
+                    "contextBreakdown": breakdown,
+                },
+                "model": model_to_use,
+                "turnId": &turn_id,
+                "conversationId": &owned_conversation_id,
+                "error": interrupt_error,
+                "content": assistant_message.content,
+            }),
+        );
+    } else if still_this_turn {
+        // Cancelled (Stop / Redo / Restore) — keep any streamed tool/UI transcript so
+        // Stop does not wipe the assistant message the user was looking at.
+        if !final_full_response.trim().is_empty() {
+            {
+                let mut hist = state.history.lock()?;
+                history::replace_or_push_assistant(&mut hist, assistant_message);
+            }
+            if let Some(path) = &current_proj_path {
+                let _ = history::save_current_conversation(&state, path);
+            }
+        }
+        let _ = app_handle.emit(
+            "chat_complete",
+            json!({
+                "stats": {
+                    "timeMs": duration_ms,
+                    "cost": 0.0,
+                    "tokens": billed_tokens,
+                    "inputTokens": total_input_tokens,
+                    "outputTokens": total_output_tokens,
+                    "creditsCharged": null,
+                    "usedAuto": used_auto,
+                    "reasoningEffort": &effort_norm,
+                    "mode": &mode_to_use,
+                    "contextBreakdown": breakdown,
+                },
+                "model": model_to_use,
+                "turnId": &turn_id,
+                "conversationId": &owned_conversation_id,
+                "error": interrupt_error.or_else(|| Some("Cancelled".to_string())),
+            }),
+        );
+    }
+
+    state.clear_in_flight_if(&turn_id);
+    journals::clear_turn_journal(&owned_conversation_id, &turn_id);
+
+    crate::core::ram_debug::snapshot(
+        "send_chat_end",
+        &format!(
+            "response_chars={} hist_msgs={}",
+            final_full_response.len(),
+            state.history.lock().ok().map(|h| h.len()).unwrap_or(0)
+        ),
+    );
+
+    Ok(final_full_response)
+}
+
+#[tauri::command]
+pub fn update_turn_policy(
+    state: tauri::State<'_, AgentState>,
+    auto_run_mode: Option<String>,
+    require_edit_approval: Option<bool>,
+    protect_destructive_git: Option<bool>,
+) -> Result<(), String> {
+    let mut policy = state.turn_policy();
+    if let Some(mode) = auto_run_mode.as_deref() {
+        policy.auto_run_mode = AutoRunMode::from_setting(Some(mode));
+    }
+    if let Some(v) = require_edit_approval {
+        policy.require_edit_approval = v;
+    }
+    if let Some(v) = protect_destructive_git {
+        policy.protect_destructive_git = v;
+    }
+    if let Some(id) = state.current_conversation_id.lock().ok().and_then(|g| g.clone()) {
+        state.set_turn_policy_for(&id, policy);
+    } else {
+        state.set_turn_policy(policy);
+    }
+    Ok(())
+}
+
+// ----- helpers --------------------------------------------------------------------------

@@ -1,0 +1,802 @@
+"use client";
+
+import { ArrowLeft20Regular } from "@fluentui/react-icons/headless/svg/arrow-left";
+import { ChevronDown20Regular } from "@fluentui/react-icons/headless/svg/chevron-down";
+import { ChevronLeft20Regular } from "@fluentui/react-icons/headless/svg/chevron-left";
+import { ChevronRight20Regular } from "@fluentui/react-icons/headless/svg/chevron-right";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Icon } from "@/components/ui/icon";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { SearchInput } from "@/components/ui/search";
+
+import { PluginLogo } from "@/components/ui/plugin-logo";
+import { commands } from "@/lib/backend";
+import { notify } from "@/features/notifications";
+import { ShapeApiError } from "@/lib/cloud/api";
+import { useShapeAuth } from "@/lib/cloud/store";
+import {
+    updateSettingSection,
+    useSettings,
+    type AutoRunModeSetting,
+} from "@/lib/settings";
+import {
+    disconnectPlugin,
+    fetchPluginTools,
+    fetchPlugins,
+    invalidatePluginsCache,
+    peekPluginsCache,
+    PLUGINS_PAGE_REFRESH_MS,
+    startPluginConnect,
+    subscribePlugins,
+    watchPluginCatalog,
+    type PluginRow,
+    type PluginToolHint,
+} from "@/lib/plugins/api";
+import {
+    cleanPluginActionDescription,
+    humanizePluginActionName,
+} from "@/lib/plugins/logos";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuRadioGroup,
+    DropdownMenuRadioItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown";
+import { SettingCard, SettingRow, SettingSection, SettingSelect, SettingSwitch, SETTING_CONTROL_BTN } from "../shared/controls";
+import { Skeleton } from "@/features/git/ui/shared/skeletons";
+
+const APPROVAL_OPTIONS: Array<{ value: AutoRunModeSetting; label: string }> = [
+    { value: "ask", label: "Ask every time" },
+    { value: "auto", label: "Auto (safe actions)" },
+    { value: "always", label: "Run everything" },
+];
+
+const CATEGORY_ORDER = [
+    "Chat",
+    "Dev",
+    "Docs",
+    "Design",
+    "Work",
+    "Business",
+    "Data",
+    "Support",
+    "Social",
+] as const;
+
+const POPULAR_TOOLKITS = [
+    "github",
+    "slack",
+    "gmail",
+    "linear",
+    "notion",
+    "figma",
+    "jira",
+    "googledrive",
+];
+
+const INBOX_TOOLKITS = [
+    "gmail",
+    "outlook",
+    "slack",
+    "discord",
+    "microsoft_teams",
+    "zoom",
+];
+
+const DATA_TOOLKITS = [
+    "googlesheets",
+    "airtable",
+    "notion",
+    "hubspot",
+    "salesforce",
+    "stripe",
+];
+
+const SHIP_TOOLKITS = [
+    "github",
+    "gitlab",
+    "vercel",
+    "netlify",
+    "sentry",
+    "cloudflare",
+    "linear",
+];
+
+const COLLAB_TOOLKITS = [
+    "slack",
+    "discord",
+    "microsoft_teams",
+    "notion",
+    "zoom",
+    "linear",
+    "asana",
+    "clickup",
+    "trello",
+    "todoist",
+];
+
+/** Shown even when the server catalog is short. Connect goes through Composio. */
+const EXTRA_PLUGINS: PluginRow[] = [
+    { id: "gmail", name: "Gmail", description: "Read, search, and send mail", category: "Chat", toolkit: "gmail", connected: false, logo: null },
+    { id: "outlook", name: "Outlook", description: "Mail and calendar from Microsoft", category: "Chat", toolkit: "outlook", connected: false, logo: null },
+    { id: "googlecalendar", name: "Google Calendar", description: "Events and availability", category: "Work", toolkit: "googlecalendar", connected: false, logo: null },
+    { id: "googledrive", name: "Google Drive", description: "Files and folders", category: "Docs", toolkit: "googledrive", connected: false, logo: null },
+    { id: "googledocs", name: "Google Docs", description: "Documents", category: "Docs", toolkit: "googledocs", connected: false, logo: null },
+    { id: "googlesheets", name: "Google Sheets", description: "Spreadsheets", category: "Data", toolkit: "googlesheets", connected: false, logo: null },
+    { id: "jira", name: "Jira", description: "Issues and projects", category: "Work", toolkit: "jira", connected: false, logo: null },
+    { id: "asana", name: "Asana", description: "Tasks and projects", category: "Work", toolkit: "asana", connected: false, logo: null },
+    { id: "trello", name: "Trello", description: "Boards and cards", category: "Work", toolkit: "trello", connected: false, logo: null },
+    { id: "clickup", name: "ClickUp", description: "Tasks and docs", category: "Work", toolkit: "clickup", connected: false, logo: null },
+    { id: "airtable", name: "Airtable", description: "Bases and records", category: "Data", toolkit: "airtable", connected: false, logo: null },
+    { id: "hubspot", name: "HubSpot", description: "Contacts and deals", category: "Business", toolkit: "hubspot", connected: false, logo: null },
+    { id: "salesforce", name: "Salesforce", description: "CRM records", category: "Business", toolkit: "salesforce", connected: false, logo: null },
+    { id: "dropbox", name: "Dropbox", description: "Files and sharing", category: "Docs", toolkit: "dropbox", connected: false, logo: null },
+    { id: "onedrive", name: "OneDrive", description: "Microsoft files", category: "Docs", toolkit: "onedrive", connected: false, logo: null },
+    { id: "calendly", name: "Calendly", description: "Scheduling", category: "Work", toolkit: "calendly", connected: false, logo: null },
+    { id: "todoist", name: "Todoist", description: "Tasks and projects", category: "Work", toolkit: "todoist", connected: false, logo: null },
+    { id: "miro", name: "Miro", description: "Boards", category: "Design", toolkit: "miro", connected: false, logo: null },
+    { id: "canva", name: "Canva", description: "Designs", category: "Design", toolkit: "canva", connected: false, logo: null },
+    { id: "zendesk", name: "Zendesk", description: "Support tickets", category: "Support", toolkit: "zendesk", connected: false, logo: null },
+    { id: "intercom", name: "Intercom", description: "Conversations", category: "Support", toolkit: "intercom", connected: false, logo: null },
+    { id: "linkedin", name: "LinkedIn", description: "Posts and profiles", category: "Social", toolkit: "linkedin", connected: false, logo: null },
+    { id: "youtube", name: "YouTube", description: "Videos and channels", category: "Social", toolkit: "youtube", connected: false, logo: null },
+    { id: "confluence", name: "Confluence", description: "Pages and spaces", category: "Docs", toolkit: "confluence", connected: false, logo: null },
+    { id: "bitbucket", name: "Bitbucket", description: "Repos and pull requests", category: "Dev", toolkit: "bitbucket", connected: false, logo: null },
+];
+
+function mergeCatalog(remote: PluginRow[]): PluginRow[] {
+    const seen = new Set(remote.map((plugin) => plugin.toolkit.toLowerCase()));
+    return [
+        ...remote,
+        ...EXTRA_PLUGINS.filter((plugin) => !seen.has(plugin.toolkit.toLowerCase())),
+    ];
+}
+
+function PluginCardSkeleton() {
+    return (
+        <div className="flex h-full w-full items-start gap-3 rounded-xl border border-border-subtle bg-surface-2 p-4">
+            <Skeleton className="size-9 shrink-0 rounded-lg" />
+            <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-2/3" />
+            </div>
+        </div>
+    );
+}
+
+function PluginsCatalogSkeleton() {
+    return (
+        <div className="space-y-8" aria-busy aria-label="Loading plugins">
+            <section className="space-y-3">
+                <Skeleton className="h-4 w-20" />
+                <div className="flex gap-3 overflow-hidden">
+                    {Array.from({ length: 3 }, (_, i) => (
+                        <div key={i} className="w-72 shrink-0">
+                            <PluginCardSkeleton />
+                        </div>
+                    ))}
+                </div>
+            </section>
+            <section className="space-y-3">
+                <Skeleton className="h-4 w-24" />
+                <div className="flex gap-3 overflow-hidden">
+                    {Array.from({ length: 3 }, (_, i) => (
+                        <div key={i} className="w-72 shrink-0">
+                            <PluginCardSkeleton />
+                        </div>
+                    ))}
+                </div>
+            </section>
+            <section className="space-y-3">
+                <Skeleton className="h-4 w-24" />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    {Array.from({ length: 6 }, (_, i) => (
+                        <PluginCardSkeleton key={i} />
+                    ))}
+                </div>
+            </section>
+        </div>
+    );
+}
+
+function PluginActionsSkeleton() {
+    return (
+        <div aria-busy aria-label="Loading actions">
+            {Array.from({ length: 6 }, (_, i) => (
+                <div key={i} className="flex items-start justify-between gap-4 px-4 py-3.5">
+                    <div className="min-w-0 flex-1 space-y-2">
+                        <Skeleton className="h-4 w-40" />
+                        <Skeleton className="h-3 w-full max-w-80" />
+                    </div>
+                    <Skeleton className="h-5 w-9 shrink-0 rounded-full" />
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function pickByToolkit(plugins: PluginRow[], slugs: string[]): PluginRow[] {
+    const map = new Map(plugins.map((p) => [p.toolkit, p]));
+    return slugs.map((s) => map.get(s)).filter((p): p is PluginRow => Boolean(p));
+}
+
+function PluginCard({
+    plugin,
+    onOpen,
+}: {
+    plugin: PluginRow;
+    onOpen: () => void;
+}) {
+    return (
+        <button
+            type="button"
+            onClick={onOpen}
+            className="flex h-full w-full items-start gap-3 squircle-2xl bg-surface-4 p-3 text-left transition-colors hover:bg-panel-hover"
+        >
+            <PluginLogo toolkit={plugin.toolkit} name={plugin.name} logo={plugin.logo} size={36} />
+            <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                    <div className="truncate text-md font-medium text-text-primary">{plugin.name}</div>
+                    {plugin.connected ? (
+                        <span className="shrink-0 rounded-md border border-border bg-panel-hover px-1.5 text-xs">
+                            Connected
+                        </span>
+                    ) : null}
+                </div>
+                <div className="line-clamp-1 text-sm text-text-muted">{plugin.description}</div>
+            </div>
+        </button>
+    );
+}
+
+function ConnectedList({
+    plugins,
+    onOpen,
+}: {
+    plugins: PluginRow[];
+    onOpen: (plugin: PluginRow) => void;
+}) {
+    if (plugins.length === 0) return null;
+    return (
+        <section className="space-y-3">
+            <h2 className="text-md font-medium text-text-muted">Connected</h2>
+            <div className="overflow-hidden squircle-2xl bg-surface-4">
+                {plugins.map((plugin, index) => (
+                    <button
+                        key={plugin.id}
+                        type="button"
+                        onClick={() => onOpen(plugin)}
+                        className={cn(
+                            "flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-panel-hover",
+                            index > 0 && "border-t border-border-subtle",
+                        )}
+                    >
+                        <PluginLogo toolkit={plugin.toolkit} name={plugin.name} logo={plugin.logo} size={32} />
+                        <div className="min-w-0 flex-1">
+                            <div className="truncate text-md font-medium text-text-primary">{plugin.name}</div>
+                            <div className="truncate text-sm text-text-muted">{plugin.description}</div>
+                        </div>
+                        <span className="shrink-0 rounded-md border border-border bg-panel-hover px-1.5 py-0.5 text-xs">
+                            Connected
+                        </span>
+                    </button>
+                ))}
+            </div>
+        </section>
+    );
+}
+
+function PluginCarousel({
+    title,
+    plugins,
+    onOpen,
+}: {
+    title: string;
+    plugins: PluginRow[];
+    onOpen: (plugin: PluginRow) => void;
+}) {
+    const scrollerRef = useRef<HTMLDivElement>(null);
+    const [canPrev, setCanPrev] = useState(false);
+    const [canNext, setCanNext] = useState(false);
+
+    const sync = useCallback(() => {
+        const el = scrollerRef.current;
+        if (!el) return;
+        const max = el.scrollWidth - el.clientWidth;
+        setCanPrev(el.scrollLeft > 12);
+        setCanNext(max > 12 && el.scrollLeft < max - 12);
+    }, []);
+
+    useEffect(() => {
+        const el = scrollerRef.current;
+        if (!el) return;
+        sync();
+        el.addEventListener("scroll", sync, { passive: true });
+        const observer = new ResizeObserver(sync);
+        observer.observe(el);
+        return () => {
+            el.removeEventListener("scroll", sync);
+            observer.disconnect();
+        };
+    }, [plugins, sync]);
+
+    const scrollByPage = (direction: -1 | 1) => {
+        const el = scrollerRef.current;
+        if (!el) return;
+        el.scrollBy({ left: direction * Math.max(el.clientWidth * 0.8, 280), behavior: "smooth" });
+    };
+
+    if (plugins.length === 0) return null;
+
+    return (
+        <section className="space-y-3">
+            <h2 className="text-sm font-medium text-text-muted">{title}</h2>
+            <div className="relative">
+                <div
+                    ref={scrollerRef}
+                    className="no-scrollbar flex gap-3 overflow-x-auto scroll-smooth px-1 pb-1"
+                >
+                    {plugins.map((plugin) => (
+                        <div key={plugin.id} className="w-72 shrink-0">
+                            <PluginCard plugin={plugin} onOpen={() => onOpen(plugin)} />
+                        </div>
+                    ))}
+                </div>
+                <div
+                    className={cn(
+                        "pointer-events-none absolute inset-y-0 left-0 w-14 bg-linear-to-r from-panel to-transparent transition-opacity",
+                        canPrev ? "opacity-100" : "opacity-0",
+                    )}
+                />
+                <div
+                    className={cn(
+                        "pointer-events-none absolute inset-y-0 right-0 w-14 bg-linear-to-l from-panel to-transparent transition-opacity",
+                        canNext ? "opacity-100" : "opacity-0",
+                    )}
+                />
+                <button
+                    type="button"
+                    aria-label={`Previous ${title}`}
+                    disabled={!canPrev}
+                    onClick={() => scrollByPage(-1)}
+                    className={cn(
+                        "absolute top-1/2 left-1 z-10 flex size-8 -translate-y-1/2 items-center justify-center rounded-full border border-border-subtle bg-surface-3 text-text-primary shadow-sm transition-opacity",
+                        canPrev ? "opacity-100" : "pointer-events-none opacity-0",
+                    )}
+                >
+                    <Icon icon={ChevronLeft20Regular} />
+                </button>
+                <button
+                    type="button"
+                    aria-label={`Next ${title}`}
+                    disabled={!canNext}
+                    onClick={() => scrollByPage(1)}
+                    className={cn(
+                        "absolute top-1/2 right-1 z-10 flex size-8 -translate-y-1/2 items-center justify-center rounded-full border border-border-subtle bg-surface-3 text-text-primary shadow-sm transition-opacity",
+                        canNext ? "opacity-100" : "pointer-events-none opacity-0",
+                    )}
+                >
+                    <Icon icon={ChevronRight20Regular} />
+                </button>
+            </div>
+        </section>
+    );
+}
+
+function PluginDetail({
+    plugin,
+    busy,
+    onBack,
+    onConnect,
+    onDisconnect,
+}: {
+    plugin: PluginRow;
+    busy: boolean;
+    onBack: () => void;
+    onConnect: () => void;
+    onDisconnect: () => void;
+}) {
+    const settings = useSettings();
+    const mode: AutoRunModeSetting =
+        settings.ai.pluginApprovals?.[plugin.toolkit] ?? settings.ai.pluginApprovalDefault ?? "ask";
+    const disabled = new Set(settings.ai.pluginDisabledActions?.[plugin.toolkit] ?? []);
+    const [tools, setTools] = useState<PluginToolHint[]>([]);
+    const [toolsLoading, setToolsLoading] = useState(false);
+
+    useEffect(() => {
+        if (!plugin.connected) {
+            setTools([]);
+            return;
+        }
+        let cancelled = false;
+        setToolsLoading(true);
+        void fetchPluginTools(plugin.toolkit)
+            .then((list) => {
+                if (!cancelled) setTools(list);
+            })
+            .catch(() => {
+                if (!cancelled) setTools([]);
+            })
+            .finally(() => {
+                if (!cancelled) setToolsLoading(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [plugin.connected, plugin.toolkit]);
+
+    function setMode(value: AutoRunModeSetting) {
+        updateSettingSection("ai", {
+            pluginApprovals: { ...settings.ai.pluginApprovals, [plugin.toolkit]: value },
+        });
+    }
+
+    function setActionEnabled(slug: string, enabled: boolean) {
+        const current = settings.ai.pluginDisabledActions?.[plugin.toolkit] ?? [];
+        const next = enabled
+            ? current.filter((s) => s !== slug)
+            : [...new Set([...current, slug])];
+        updateSettingSection("ai", {
+            pluginDisabledActions: {
+                ...settings.ai.pluginDisabledActions,
+                [plugin.toolkit]: next,
+            },
+        });
+    }
+
+    function enableAll() {
+        updateSettingSection("ai", {
+            pluginDisabledActions: {
+                ...settings.ai.pluginDisabledActions,
+                [plugin.toolkit]: [],
+            },
+        });
+    }
+
+    return (
+        <div className="mx-auto w-full max-w-5xl">
+            <Button
+                type="button"
+                onClick={onBack}
+                variant="ghost"
+                size="sm"
+                className={cn(SETTING_CONTROL_BTN, "mb-10 w-auto")}
+            >
+                <Icon icon={ArrowLeft20Regular} />
+                Back
+            </Button>
+            <div className="flex items-start gap-4">
+                <PluginLogo toolkit={plugin.toolkit} name={plugin.name} logo={plugin.logo} size={48} />
+                <div className="min-w-0 flex-1">
+                    <h1 className="text-2xl font-medium text-text-primary">{plugin.name}</h1>
+                    <p className="mt-1 text-sm text-text-muted">{plugin.description}</p>
+                </div>
+                {plugin.connected ? (
+                    <Button variant="ghost" size="sm" className={SETTING_CONTROL_BTN} disabled={busy} onClick={onDisconnect}>
+                        Disconnect
+                    </Button>
+                ) : (
+                    <Button size="sm" disabled={busy} onClick={onConnect}>
+                        {busy ? "Connecting…" : "Connect"}
+                    </Button>
+                )}
+            </div>
+
+            <div className="mt-8">
+                <SettingSection title="Approval">
+                    <SettingRow title="When the agent uses this plugin">
+                        <SettingSelect
+                            value={mode}
+                            options={APPROVAL_OPTIONS}
+                            onChange={(v) => setMode(v as AutoRunModeSetting)}
+                        />
+                    </SettingRow>
+                </SettingSection>
+
+            {plugin.connected ? (
+                <SettingSection
+                    title="Actions"
+                    action={
+                        tools.length > 0 ? (
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={enableAll}
+                            >
+                                Enable all
+                            </Button>
+                        ) : null
+                    }
+                >
+                    <SettingCard>
+                    {toolsLoading && tools.length === 0 ? (
+                        <PluginActionsSkeleton />
+                    ) : tools.length === 0 ? (
+                        <div className="px-3.5 py-6 text-center text-sm text-text-muted">
+                            Connect and wait a moment, then reopen to load actions.
+                        </div>
+                    ) : (
+                        tools.map((tool, index) => (
+                            <SettingRow
+                                key={`${tool.slug}-${index}`}
+                                title={humanizePluginActionName(tool.slug, tool.name)}
+                                description={cleanPluginActionDescription(tool.description)}
+                            >
+                                <SettingSwitch
+                                    checked={!disabled.has(tool.slug)}
+                                    onChange={(on) => setActionEnabled(tool.slug, on)}
+                                />
+                            </SettingRow>
+                        ))
+                    )}
+                    </SettingCard>
+                </SettingSection>
+            ) : null}
+            </div>
+        </div>
+    );
+}
+
+export function PluginsSettingsView() {
+    const auth = useShapeAuth();
+    const pluginsAvailable = auth.loggedIn && !auth.offline;
+    const cached = peekPluginsCache();
+    const [plugins, setPlugins] = useState<PluginRow[]>(cached ? mergeCatalog(cached.plugins) : EXTRA_PLUGINS);
+    const [configured, setConfigured] = useState(cached?.configured ?? true);
+    const [loading, setLoading] = useState(!cached);
+    const [busy, setBusy] = useState<string | null>(null);
+    const [query, setQuery] = useState("");
+    const [category, setCategory] = useState("all");
+    const [openToolkit, setOpenToolkit] = useState<string | null>(null);
+
+    const load = useCallback(
+        async (force = false, quiet = false) => {
+            if (!pluginsAvailable) {
+                setLoading(false);
+                return;
+            }
+            try {
+                const data = await fetchPlugins({ force });
+                const latest = peekPluginsCache() ?? data;
+                setPlugins(mergeCatalog(latest.plugins));
+                setConfigured(latest.configured);
+                setBusy((current) => {
+                    if (!current) return current;
+                    if (latest.plugins.some((p) => p.toolkit === current && p.connected)) return null;
+                    return current;
+                });
+            } catch (err) {
+                if (quiet) return;
+                const message = err instanceof ShapeApiError ? err.message : "Could not load plugins.";
+                notify.error(message);
+            } finally {
+                setLoading(false);
+            }
+        },
+        [pluginsAvailable],
+    );
+
+    useEffect(() => {
+        watchPluginCatalog();
+        void load(true);
+    }, [load]);
+
+    useEffect(() => subscribePlugins(() => {
+        const cached = peekPluginsCache();
+        if (!cached) return;
+        setPlugins(mergeCatalog(cached.plugins));
+        setConfigured(cached.configured);
+    }), []);
+
+    useEffect(() => {
+        if (!pluginsAvailable) return;
+        const id = window.setInterval(() => {
+            if (document.visibilityState === "hidden") return;
+            void load(true, true);
+        }, PLUGINS_PAGE_REFRESH_MS);
+        return () => window.clearInterval(id);
+    }, [pluginsAvailable, load]);
+
+    useEffect(() => {
+        if (!busy) return;
+        const onFocus = () => {
+            invalidatePluginsCache();
+            void load(true);
+        };
+        window.addEventListener("focus", onFocus);
+        const id = window.setInterval(() => {
+            void load(true);
+        }, 2500);
+        const stop = window.setTimeout(() => {
+            setBusy(null);
+            window.clearInterval(id);
+        }, 90_000);
+        return () => {
+            window.removeEventListener("focus", onFocus);
+            window.clearInterval(id);
+            window.clearTimeout(stop);
+        };
+    }, [busy, load]);
+
+    const categories = useMemo(() => {
+        const present = new Set(plugins.map((p) => p.category).filter(Boolean));
+        const ordered = CATEGORY_ORDER.filter((c) => present.has(c));
+        const extra = [...present].filter((c) => !CATEGORY_ORDER.includes(c as (typeof CATEGORY_ORDER)[number])).sort();
+        return [...ordered, ...extra];
+    }, [plugins]);
+
+    const filtered = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        return plugins.filter((p) => {
+            if (category !== "all" && p.category !== category) return false;
+            if (!q) return true;
+            return (
+                p.name.toLowerCase().includes(q)
+                || p.description.toLowerCase().includes(q)
+                || p.category.toLowerCase().includes(q)
+            );
+        });
+    }, [plugins, query, category]);
+
+    const browsing = category === "all" && !query.trim();
+    const connected = useMemo(() => plugins.filter((p) => p.connected), [plugins]);
+    const popular = useMemo(() => pickByToolkit(plugins, POPULAR_TOOLKITS), [plugins]);
+    const inbox = useMemo(() => pickByToolkit(plugins, INBOX_TOOLKITS), [plugins]);
+    const data = useMemo(() => pickByToolkit(plugins, DATA_TOOLKITS), [plugins]);
+    const ship = useMemo(() => pickByToolkit(plugins, SHIP_TOOLKITS), [plugins]);
+    const collab = useMemo(() => pickByToolkit(plugins, COLLAB_TOOLKITS), [plugins]);
+
+    const openPlugin = openToolkit ? plugins.find((p) => p.toolkit === openToolkit) : undefined;
+    const categoryLabel = category === "all" ? "All" : category;
+
+    async function connect(plugin: PluginRow) {
+        setBusy(plugin.toolkit);
+        try {
+            const { redirectUrl } = await startPluginConnect(plugin.toolkit);
+            await commands.openUrlExternal(redirectUrl);
+            notify.info(`Finish connecting ${plugin.name} in the browser.`);
+        } catch (err) {
+            setBusy(null);
+            const message = err instanceof ShapeApiError ? err.message : "Could not start connect.";
+            notify.error(message);
+        }
+    }
+
+    async function disconnect(plugin: PluginRow) {
+        setBusy(plugin.toolkit);
+        try {
+            await disconnectPlugin(plugin.toolkit);
+            notify.success(`${plugin.name} disconnected.`);
+            await load(true);
+        } catch (err) {
+            const message = err instanceof ShapeApiError ? err.message : "Could not disconnect.";
+            notify.error(message);
+        } finally {
+            setBusy(null);
+        }
+    }
+
+    return (
+        <div className="relative h-full min-h-0 bg-panel">
+            <div className="absolute inset-0 overflow-y-auto px-6 pt-8 pb-8">
+                {openPlugin ? (
+                    <PluginDetail
+                        plugin={openPlugin}
+                        busy={busy === openPlugin.toolkit}
+                        onBack={() => setOpenToolkit(null)}
+                        onConnect={() => void connect(openPlugin)}
+                        onDisconnect={() => void disconnect(openPlugin)}
+                    />
+                ) : (
+                    <div className="mx-auto w-full max-w-5xl">
+                        <h1 className="text-2xl font-medium text-text-primary">Plugins</h1>
+                        <div className="mt-4 flex items-center gap-2">
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className={SETTING_CONTROL_BTN}
+                                    >
+                                        {categoryLabel}
+                                        <Icon icon={ChevronDown20Regular} className="shrink-0 text-text-muted" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="start" className="min-w-40">
+                                    <DropdownMenuRadioGroup value={category} onValueChange={setCategory}>
+                                        <DropdownMenuRadioItem value="all">All</DropdownMenuRadioItem>
+                                        {categories.map((c) => (
+                                            <DropdownMenuRadioItem key={c} value={c}>
+                                                {c}
+                                            </DropdownMenuRadioItem>
+                                        ))}
+                                    </DropdownMenuRadioGroup>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                            <SearchInput
+                                placeholder="Search plugins"
+                                value={query}
+                                onChange={(e) => setQuery(e.target.value)}
+                                className="min-w-0 flex-1"
+                            />
+                        </div>
+
+                        <div className="mt-6 space-y-8">
+                            {!pluginsAvailable ? (
+                                <div className="squircle-2xl bg-surface-2 px-4 py-10 text-center text-sm text-text-muted">
+                                    {auth.loggedIn
+                                        ? "Connect to Shape to manage cloud plugins. Local MCP servers still work under MCP."
+                                        : "Sign in to Shape to connect plugins. Local MCP servers still work under MCP."}
+                                </div>
+                            ) : !configured ? (
+                                <div className="rounded-xl bg-surface-2 px-4 py-10 text-center text-sm text-text-muted">
+                                    Plugins are not configured on the server.
+                                </div>
+                            ) : loading && plugins.length === 0 ? (
+                                <PluginsCatalogSkeleton />
+                            ) : filtered.length === 0 ? (
+                                <div className="rounded-xl bg-surface-2 px-4 py-10 text-center text-sm text-text-muted">
+                                    No plugins match
+                                </div>
+                            ) : (
+                                <>
+                                    {browsing ? (
+                                        <>
+                                            <ConnectedList
+                                                plugins={connected}
+                                                onOpen={(p) => setOpenToolkit(p.toolkit)}
+                                            />
+                                            <PluginCarousel
+                                                title="Popular"
+                                                plugins={popular}
+                                                onOpen={(p) => setOpenToolkit(p.toolkit)}
+                                            />
+                                            <PluginCarousel
+                                                title="Inbox"
+                                                plugins={inbox}
+                                                onOpen={(p) => setOpenToolkit(p.toolkit)}
+                                            />
+                                            <PluginCarousel
+                                                title="Data"
+                                                plugins={data}
+                                                onOpen={(p) => setOpenToolkit(p.toolkit)}
+                                            />
+                                            <PluginCarousel
+                                                title="Ship code"
+                                                plugins={ship}
+                                                onOpen={(p) => setOpenToolkit(p.toolkit)}
+                                            />
+                                            <PluginCarousel
+                                                title="Stay in the loop"
+                                                plugins={collab}
+                                                onOpen={(p) => setOpenToolkit(p.toolkit)}
+                                            />
+                                        </>
+                                    ) : null}
+                                    <section className="space-y-3">
+                                        <h2 className="text-sm font-medium text-text-muted">
+                                            {browsing ? "All plugins" : categoryLabel}
+                                        </h2>
+                                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                                            {filtered.map((plugin) => (
+                                                <PluginCard
+                                                    key={plugin.id}
+                                                    plugin={plugin}
+                                                    onOpen={() => setOpenToolkit(plugin.toolkit)}
+                                                />
+                                            ))}
+                                        </div>
+                                    </section>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}

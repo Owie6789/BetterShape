@@ -1,0 +1,100 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "name": "Shape",
+  "theme": "aspen",
+  "description": "The desktop coding agent. Works in your files.",
+  "colors": {
+    "primary": "#3946FF",
+    "light": "#3946FF",
+    "dark": "#3946FF"
+  },
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg",
+    "href": "https://useshape.org"
+  },
+  "favicon": "/logo/icon.svg",
+  "appearance": {
+    "default": "dark"
+  },
+  "icons": {
+    "library": "lucide"
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Docs",
+        "icon": "book-open",
+        "groups": [
+          {
+            "group": "Get started",
+            "pages": ["index", "get-started/quickstart", "get-started/models"]
+          },
+          {
+            "group": "Agent",
+            "pages": ["agent/overview", "agent/plan", "agent/review", "agent/browser"]
+          },
+          {
+            "group": "Plugins",
+            "pages": ["customize/plugins", "customize/mcp", "customize/slash-commands"]
+          },
+          {
+            "group": "Git",
+            "pages": ["git/github", "git/commits"]
+          },
+          {
+            "group": "Help",
+            "pages": [
+              "help/install",
+              "help/troubleshooting",
+              "help/shortcuts",
+              "help/faq",
+              "help/contact"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Contributing",
+        "icon": "git-branch",
+        "groups": [
+          {
+            "group": "Contribute",
+            "pages": [
+              "developing/overview",
+              "developing/architecture",
+              "developing/local-development",
+              "developing/agent-tools",
+              "developing/language-servers",
+              "developing/indexing-and-search",
+              "developing/client-trust",
+              "developing/tauri-ipc"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Changelog",
+        "icon": "list",
+        "pages": ["changelog"]
+      }
+    ]
+  },
+  "navbar": {
+    "links": [
+      { "type": "github", "href": "https://github.com/useshape/Shape" }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Download",
+      "href": "https://useshape.org/download"
+    }
+  },
+  "footer": {
+    "socials": {
+      "x": "https://x.com/useshape",
+      "github": "https://github.com/useshape/Shape",
+      "discord": "https://discord.com/invite/MMCEDVZKYf"
+    }
+  }
+}

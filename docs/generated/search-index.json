@@ -1,0 +1,452 @@
+{
+  "version": 1,
+  "builtAt": "2026-09-25T22:21:14.477Z",
+  "pages": [
+    {
+      "slug": [
+        "get-started",
+        "quickstart"
+      ],
+      "title": "Quickstart",
+      "description": "Open a folder and make one change.",
+      "order": 1,
+      "section": "Get Started",
+      "href": "/docs/get-started/quickstart",
+      "body": "Download the installer from useshape.org/download, sign in, and open a folder. Ask is a good way to get familiar with the code. Code can make changes and run commands. When a file changes, review the diff and keep or undo it. Larger changes are easier to start in Plan."
+    },
+    {
+      "slug": [
+        "get-started",
+        "models"
+      ],
+      "title": "Models and credits",
+      "description": "Plans, and what a named model costs.",
+      "order": 2,
+      "section": "Get Started",
+      "href": "/docs/get-started/models",
+      "body": "Auto is included on every plan. A named model spends credits. Unused credits do not carry over. Usage is on the usage page. Plan Price Credits / month Models Free $0 Auto only Auto Plus $15 450 Auto and every model below Pro $50 1,500 Auto and every model below Max $150 4,500 Auto and every model below Rates are credits per million tokens. Model Provider Input Cache read Output Context Plan Claude Opus 5 Anthropic 350 35 1,750 1M Plus+ Claude Sonnet 5 Anthropic 210 21 1,050 1M Plus+ Claude Sonnet 4.6 Anthropic 210 21 1,050 200K Plus+ GPT 5.6 Sol OpenAI 350 35 2,100 1M Plus+ GPT 5.5 OpenAI 350 35 2,100 1M Plus+ GPT 5.4 OpenAI 175 17.5 1,050 200K Plus+ Gemini 3.1 Pro Google 140 14 840 2M Plus+ Grok 4.3 xAI 140 70 700 128K Plus+ DeepSeek V3.2 DeepSeek 35 17.5 140 128K Plus+"
+    },
+    {
+      "slug": [
+        "agent",
+        "overview"
+      ],
+      "title": "Agent",
+      "description": "Chat with the project and let it do the work.",
+      "order": 1,
+      "section": "Agent",
+      "href": "/docs/agent/overview",
+      "body": "Chat with your project and let it handle the work. Ask is useful for getting familiar with a codebase. Code can make changes and run commands. Plan helps with larger changes. Visual is for UI, and Review is for tracking down a problem and making a small fix. When a file changes, review the diff and keep or undo it. @ adds a file to the message. / runs a slash command."
+    },
+    {
+      "slug": [
+        "agent",
+        "plan"
+      ],
+      "title": "Plan",
+      "description": "Agree on the approach before the project changes.",
+      "order": 2,
+      "section": "Agent",
+      "href": "/docs/agent/plan",
+      "body": "Plan writes the approach to .shape/plans/ before it changes the project. Read it, edit it if you want, then continue to build it."
+    },
+    {
+      "slug": [
+        "agent",
+        "review"
+      ],
+      "title": "Review",
+      "description": "Find the problem, then make a small fix.",
+      "order": 3,
+      "section": "Agent",
+      "href": "/docs/agent/review",
+      "body": "Review looks for the cause of a problem, then makes a small fix. Use it for a bug, a regression, or a pass over something that feels risky."
+    },
+    {
+      "slug": [
+        "agent",
+        "browser"
+      ],
+      "title": "Browser",
+      "description": "Edit the running page. The source updates.",
+      "order": 4,
+      "section": "Agent",
+      "href": "/docs/agent/browser",
+      "body": "Design mode changes the running page and writes those changes into the source. It does not use a model. Visual mode in chat does. Start the dev server and open the local URL. This works for Next.js, Astro, Vite, and Remix."
+    },
+    {
+      "slug": [
+        "customize",
+        "plugins"
+      ],
+      "title": "Plugins",
+      "description": "Let chat use an outside account.",
+      "order": 1,
+      "section": "Customize",
+      "href": "/docs/customize/plugins",
+      "body": "Plugins connect an account such as GitHub, Slack, or Linear so chat can use it. Sign in to connect one. Local tool servers are configured as MCP."
+    },
+    {
+      "slug": [
+        "customize",
+        "mcp"
+      ],
+      "title": "MCP",
+      "description": "Local tool servers.",
+      "order": 2,
+      "section": "Customize",
+      "href": "/docs/customize/mcp",
+      "body": "Local tool servers are configured in mcp.json . Configure MCP opens that file. Use url instead of command for an HTTP server."
+    },
+    {
+      "slug": [
+        "customize",
+        "slash-commands"
+      ],
+      "title": "Slash commands",
+      "description": "A saved prompt you can run with /.",
+      "order": 3,
+      "section": "Customize",
+      "href": "/docs/customize/slash-commands",
+      "body": "Type / in chat to run a workflow. Each one is a name and a prompt, defined under Workflows. A trigger phrase in the message runs it too."
+    },
+    {
+      "slug": [
+        "git",
+        "commits"
+      ],
+      "title": "Commits",
+      "description": "Stage, commit, and push.",
+      "order": 1,
+      "section": "Git",
+      "href": "/docs/git/commits",
+      "body": "Stage what you want to include, write a message, and commit. Push when you want the remote updated. A GitHub login is only needed for the remote. Pull requests live there too."
+    },
+    {
+      "slug": [
+        "git",
+        "github"
+      ],
+      "title": "GitHub",
+      "description": "Pull requests, issues, and Actions.",
+      "order": 2,
+      "section": "Git",
+      "href": "/docs/git/github",
+      "body": "Sign in with GitHub to load pull requests, issues, and Actions for the open repository. This login is separate from the account you use for chat. A new pull request drafts the title and body from the branch. You confirm before it is published."
+    },
+    {
+      "slug": [
+        "help",
+        "install"
+      ],
+      "title": "Install",
+      "description": "Windows 10 or 11, 64-bit.",
+      "order": 1,
+      "section": "Help",
+      "href": "/docs/help/install",
+      "body": "Windows 10 or 11, 64 bit. The installer is on useshape.org/download. If SmartScreen appears, choose More info, then Run anyway. Updates install on their own. Check for Updates under Help runs one now."
+    },
+    {
+      "slug": [
+        "help",
+        "shortcuts"
+      ],
+      "title": "Shortcuts",
+      "description": "Commands worth remembering.",
+      "order": 2,
+      "section": "Help",
+      "href": "/docs/help/shortcuts",
+      "body": "Action Shortcut Open folder Ctrl+K Ctrl+O Chat Ctrl+L New chat Ctrl+Shift+L Command palette Ctrl+Shift+P Go to file Ctrl+P Source control Ctrl+Shift+G Terminal Ctrl+ Settings Ctrl+, Design mode Ctrl+Shift+D In a Git diff, Ctrl+Y stages the current hunk and Ctrl+Shift+Y unstages it. Elsewhere, Ctrl+Y is redo."
+    },
+    {
+      "slug": [
+        "help",
+        "faq"
+      ],
+      "title": "FAQ",
+      "description": "A few questions that are not obvious from the rest of the docs.",
+      "order": 3,
+      "section": "Help",
+      "href": "/docs/help/faq",
+      "body": "Editing works without a connection. Chat does not. No. They reset each month. Plans are on Models and credits."
+    },
+    {
+      "slug": [
+        "help",
+        "troubleshooting"
+      ],
+      "title": "Troubleshooting",
+      "description": "When install, sign-in, or the preview fails.",
+      "order": 4,
+      "section": "Help",
+      "href": "/docs/help/troubleshooting",
+      "body": "It needs Windows 10 or 11, 64 bit. Download the installer again from useshape.org/download. Finish the step in the browser, then return to the app. If it still fails, sign out and sign in again. Check the plan and remaining credits on Billing. Free includes Auto only. Start the dev server, then open that URL in the browser. Sign in with GitHub and open a folder whose remote is on github.com."
+    },
+    {
+      "slug": [
+        "help",
+        "contact"
+      ],
+      "title": "Contact",
+      "description": "Billing, account, and security reports.",
+      "order": 5,
+      "section": "Help",
+      "href": "/docs/help/contact",
+      "body": "Billing, account, and product questions go to contact sales. Include the account email and the version from Help, About. Do not send passwords or API keys. Security issues go through SECURITY.md."
+    }
+  ],
+  "chunks": [
+    {
+      "id": "get-started/quickstart#intro",
+      "slug": [
+        "get-started",
+        "quickstart"
+      ],
+      "href": "/docs/get-started/quickstart",
+      "heading": null,
+      "text": "Download the installer from useshape.org/download, sign in, and open a folder. Ask is a good way to get familiar with the code. Code can make changes and run commands. When a file changes, review the diff and keep or undo it. Larger changes are easier to start in Plan.",
+      "title": "Quickstart",
+      "section": "Get Started"
+    },
+    {
+      "id": "get-started/models#intro",
+      "slug": [
+        "get-started",
+        "models"
+      ],
+      "href": "/docs/get-started/models",
+      "heading": null,
+      "text": "Auto is included on every plan. A named model spends credits. Unused credits do not carry over. Usage is on the usage page. Plan Price Credits / month Models Free $0 Auto only Auto Plus $15 450 Auto and every model below Pro $50 1,500 Auto and every model below Max $150 4,500 Auto and every model below Rates are credits per million tokens. Model Provider Input Cache read Output Context Plan Claude Opus 5 Anthropic 350 35 1,750 1M Plus+ Claude Sonnet 5 Anthropic 210 21 1,050 1M Plus+ Claude Sonnet 4.6 Anthropic 210 21 1,050 200K Plus+ GPT 5.6 Sol OpenAI 350 35 2,100 1M Plus+ GPT 5.5 OpenAI 350 35 2,100 1M Plus+ GPT 5.4 OpenAI 175 17.5 1,050 200K Plus+ Gemini 3.1 Pro Google 140 14 840 2M Plus+ Grok 4.3 xAI 140 70 700 128K Plus+ DeepSeek V3.2 DeepSeek 35 17.5 140 128K Plus+",
+      "title": "Models and credits",
+      "section": "Get Started"
+    },
+    {
+      "id": "agent/overview#intro",
+      "slug": [
+        "agent",
+        "overview"
+      ],
+      "href": "/docs/agent/overview",
+      "heading": null,
+      "text": "Chat with your project and let it handle the work. Ask is useful for getting familiar with a codebase. Code can make changes and run commands. Plan helps with larger changes. Visual is for UI, and Review is for tracking down a problem and making a small fix. When a file changes, review the diff and keep or undo it. @ adds a file to the message. / runs a slash command.",
+      "title": "Agent",
+      "section": "Agent"
+    },
+    {
+      "id": "agent/plan#intro",
+      "slug": [
+        "agent",
+        "plan"
+      ],
+      "href": "/docs/agent/plan",
+      "heading": null,
+      "text": "Plan writes the approach to .shape/plans/ before it changes the project. Read it, edit it if you want, then continue to build it.",
+      "title": "Plan",
+      "section": "Agent"
+    },
+    {
+      "id": "agent/review#intro",
+      "slug": [
+        "agent",
+        "review"
+      ],
+      "href": "/docs/agent/review",
+      "heading": null,
+      "text": "Review looks for the cause of a problem, then makes a small fix. Use it for a bug, a regression, or a pass over something that feels risky.",
+      "title": "Review",
+      "section": "Agent"
+    },
+    {
+      "id": "agent/browser#intro",
+      "slug": [
+        "agent",
+        "browser"
+      ],
+      "href": "/docs/agent/browser",
+      "heading": null,
+      "text": "Design mode changes the running page and writes those changes into the source. It does not use a model. Visual mode in chat does. Start the dev server and open the local URL. This works for Next.js, Astro, Vite, and Remix.",
+      "title": "Browser",
+      "section": "Agent"
+    },
+    {
+      "id": "customize/plugins#intro",
+      "slug": [
+        "customize",
+        "plugins"
+      ],
+      "href": "/docs/customize/plugins",
+      "heading": null,
+      "text": "Plugins connect an account such as GitHub, Slack, or Linear so chat can use it. Sign in to connect one. Local tool servers are configured as MCP.",
+      "title": "Plugins",
+      "section": "Customize"
+    },
+    {
+      "id": "customize/mcp#intro",
+      "slug": [
+        "customize",
+        "mcp"
+      ],
+      "href": "/docs/customize/mcp",
+      "heading": null,
+      "text": "Local tool servers are configured in mcp.json . Configure MCP opens that file. Use url instead of command for an HTTP server.",
+      "title": "MCP",
+      "section": "Customize"
+    },
+    {
+      "id": "customize/slash-commands#intro",
+      "slug": [
+        "customize",
+        "slash-commands"
+      ],
+      "href": "/docs/customize/slash-commands",
+      "heading": null,
+      "text": "Type / in chat to run a workflow. Each one is a name and a prompt, defined under Workflows. A trigger phrase in the message runs it too.",
+      "title": "Slash commands",
+      "section": "Customize"
+    },
+    {
+      "id": "git/commits#intro",
+      "slug": [
+        "git",
+        "commits"
+      ],
+      "href": "/docs/git/commits",
+      "heading": null,
+      "text": "Stage what you want to include, write a message, and commit. Push when you want the remote updated. A GitHub login is only needed for the remote. Pull requests live there too.",
+      "title": "Commits",
+      "section": "Git"
+    },
+    {
+      "id": "git/github#intro",
+      "slug": [
+        "git",
+        "github"
+      ],
+      "href": "/docs/git/github",
+      "heading": null,
+      "text": "Sign in with GitHub to load pull requests, issues, and Actions for the open repository. This login is separate from the account you use for chat. A new pull request drafts the title and body from the branch. You confirm before it is published.",
+      "title": "GitHub",
+      "section": "Git"
+    },
+    {
+      "id": "help/install#intro",
+      "slug": [
+        "help",
+        "install"
+      ],
+      "href": "/docs/help/install",
+      "heading": null,
+      "text": "Windows 10 or 11, 64 bit. The installer is on useshape.org/download. If SmartScreen appears, choose More info, then Run anyway. Updates install on their own. Check for Updates under Help runs one now.",
+      "title": "Install",
+      "section": "Help"
+    },
+    {
+      "id": "help/shortcuts#intro",
+      "slug": [
+        "help",
+        "shortcuts"
+      ],
+      "href": "/docs/help/shortcuts",
+      "heading": null,
+      "text": "Action Shortcut Open folder Ctrl+K Ctrl+O Chat Ctrl+L New chat Ctrl+Shift+L Command palette Ctrl+Shift+P Go to file Ctrl+P Source control Ctrl+Shift+G Terminal Ctrl+ Settings Ctrl+, Design mode Ctrl+Shift+D In a Git diff, Ctrl+Y stages the current hunk and Ctrl+Shift+Y unstages it. Elsewhere, Ctrl+Y is redo.",
+      "title": "Shortcuts",
+      "section": "Help"
+    },
+    {
+      "id": "help/faq#can-i-work-offline",
+      "slug": [
+        "help",
+        "faq"
+      ],
+      "href": "/docs/help/faq",
+      "heading": "Can I work offline?",
+      "text": "Editing works without a connection. Chat does not.",
+      "title": "FAQ",
+      "section": "Help"
+    },
+    {
+      "id": "help/faq#do-credits-roll-over",
+      "slug": [
+        "help",
+        "faq"
+      ],
+      "href": "/docs/help/faq",
+      "heading": "Do credits roll over?",
+      "text": "No. They reset each month. Plans are on Models and credits.",
+      "title": "FAQ",
+      "section": "Help"
+    },
+    {
+      "id": "help/troubleshooting#the-app-will-not-open",
+      "slug": [
+        "help",
+        "troubleshooting"
+      ],
+      "href": "/docs/help/troubleshooting",
+      "heading": "The app will not open",
+      "text": "It needs Windows 10 or 11, 64 bit. Download the installer again from useshape.org/download.",
+      "title": "Troubleshooting",
+      "section": "Help"
+    },
+    {
+      "id": "help/troubleshooting#sign-in-never-finishes",
+      "slug": [
+        "help",
+        "troubleshooting"
+      ],
+      "href": "/docs/help/troubleshooting",
+      "heading": "Sign-in never finishes",
+      "text": "Finish the step in the browser, then return to the app. If it still fails, sign out and sign in again.",
+      "title": "Troubleshooting",
+      "section": "Help"
+    },
+    {
+      "id": "help/troubleshooting#chat-says-usage-is-not-allowed",
+      "slug": [
+        "help",
+        "troubleshooting"
+      ],
+      "href": "/docs/help/troubleshooting",
+      "heading": "Chat says usage is not allowed",
+      "text": "Check the plan and remaining credits on Billing. Free includes Auto only.",
+      "title": "Troubleshooting",
+      "section": "Help"
+    },
+    {
+      "id": "help/troubleshooting#the-preview-cannot-reach-localhost",
+      "slug": [
+        "help",
+        "troubleshooting"
+      ],
+      "href": "/docs/help/troubleshooting",
+      "heading": "The preview cannot reach localhost",
+      "text": "Start the dev server, then open that URL in the browser.",
+      "title": "Troubleshooting",
+      "section": "Help"
+    },
+    {
+      "id": "help/troubleshooting#github-data-is-missing",
+      "slug": [
+        "help",
+        "troubleshooting"
+      ],
+      "href": "/docs/help/troubleshooting",
+      "heading": "GitHub data is missing",
+      "text": "Sign in with GitHub and open a folder whose remote is on github.com.",
+      "title": "Troubleshooting",
+      "section": "Help"
+    },
+    {
+      "id": "help/contact#intro",
+      "slug": [
+        "help",
+        "contact"
+      ],
+      "href": "/docs/help/contact",
+      "heading": null,
+      "text": "Billing, account, and product questions go to contact sales. Include the account email and the version from Help, About. Do not send passwords or API keys. Security issues go through SECURITY.md.",
+      "title": "Contact",
+      "section": "Help"
+    }
+  ]
+}

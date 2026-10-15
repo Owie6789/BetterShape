@@ -1,0 +1,45 @@
+import { cn } from "@/lib/utils";
+
+export const WORKBENCH_TAB_HEIGHT = 36;
+
+export const WORKBENCH_TAB_BAR_CLASS =
+    "workbench-tab-bar relative box-border flex h-[36px] shrink-0 w-full items-center gap-1 bg-panel-hover px-2";
+
+export const WORKBENCH_TAB_SCROLL_CLASS =
+    "workbench-tab-scroll flex h-full min-w-0 flex-1 items-center gap-1 overflow-x-auto no-scrollbar";
+
+/** Fills unused width in the tab row */
+export const WORKBENCH_TAB_TRAIL_CLASS =
+    "min-w-[8px] flex-1 self-stretch";
+
+export const WORKBENCH_TAB_ROW_CLASS =
+    "flex h-full min-w-full w-max items-center gap-1";
+
+export const WORKBENCH_TAB_LIST_CLASS = "flex h-full w-max shrink-0 items-center gap-1";
+
+export const WORKBENCH_TAB_FADE_CLASS =
+    "pointer-events-none absolute inset-y-0 right-0 z-10 w-10 bg-linear-to-r from-transparent to-panel-hover";
+
+export const WORKBENCH_TAB_ACTIONS_CLASS =
+    "box-border flex h-full shrink-0 items-center gap-0.5 px-1";
+
+export function workbenchTabItemClass(active: boolean, dragging?: boolean) {
+    return cn(
+        "workbench-tab-item group relative box-border flex h-7 shrink-0 cursor-pointer select-none items-center gap-2 overflow-hidden whitespace-nowrap squircle-lg px-2.5 font-normal transition-colors",
+        active
+            ? "is-active min-w-[60px] bg-white/10 text-text-primary"
+            : "text-text-muted hover:bg-panel-hover hover:text-text-secondary",
+        dragging && "opacity-40",
+    );
+}
+
+export const WORKBENCH_TAB_CLOSE_BUTTON_CLASS =
+    "flex h-4 w-4 items-center justify-center text-text-muted hover:text-text-primary";
+
+export const WORKBENCH_TAB_CONTENT_CLASS =
+    "workbench-tab-content relative z-[1] flex h-full min-w-0 items-center gap-1.5";
+
+export const WORKBENCH_TAB_CONTENT_ACTIVE_CLASS = "workbench-tab-content is-active";
+
+export const WORKBENCH_TAB_ACTION_BUTTON_CLASS =
+    "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-panel-hover hover:text-text-primary";

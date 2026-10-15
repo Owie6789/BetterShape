@@ -1,0 +1,11 @@
+{
+  "nav": [
+    { "title": "Get started", "match": ["get-started"] },
+    { "title": "Agent", "match": ["agent"] },
+    { "title": "Customize", "match": ["customize"] },
+    { "title": "Git", "match": ["git"] },
+    { "title": "Help", "match": ["help"] },
+    { "title": "Contributing", "match": ["developing"] }
+  ],
+  "sectionOrder": ["get-started", "agent", "customize", "git", "help"]
+}

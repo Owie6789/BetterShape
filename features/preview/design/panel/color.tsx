@@ -1,0 +1,829 @@
+"use client";
+
+import { Add20Regular } from "@fluentui/react-icons/headless/svg/add";
+import { Camera20Filled } from "@fluentui/react-icons/headless/svg/camera";
+import { Dismiss20Regular } from "@fluentui/react-icons/headless/svg/dismiss";
+import { Eye20Regular } from "@fluentui/react-icons/headless/svg/eye";
+import { EyeOff20Regular } from "@fluentui/react-icons/headless/svg/eye-off";
+import { LinkDismiss20Regular } from "@fluentui/react-icons/headless/svg/link-dismiss";
+import { Stop20Filled } from "@fluentui/react-icons/headless/svg/stop";
+import { Subtract20Regular } from "@fluentui/react-icons/headless/svg/subtract";
+import { WeatherSunny20Regular } from "@fluentui/react-icons/headless/svg/weather-sunny";
+
+
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown";
+import { Icon } from "@/components/ui/icon";
+
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
+import { cssColorToHex, cssVarName, defaultCssGradient, parseCssGradient, serializeCssGradient, type CssGradient } from "../css";
+import { CONTROL, IconButton, Segment, SelectField } from "./field";
+import { TokenMenu } from "./tokens";
+import { css, type Styles, type ThemeToken } from "./types";
+import { formatVariableDisplayName } from "@/lib/ui/css-variables";
+
+type Hsv = { h: number; s: number; v: number };
+
+function hexToRgb(hex: string): [number, number, number] {
+    const normalized = hex.replace(/^#/, "").padEnd(6, "0").slice(0, 6);
+    return [
+        Number.parseInt(normalized.slice(0, 2), 16) || 0,
+        Number.parseInt(normalized.slice(2, 4), 16) || 0,
+        Number.parseInt(normalized.slice(4, 6), 16) || 0,
+    ];
+}
+
+function rgbToHex(r: number, g: number, b: number) {
+    return [r, g, b]
+        .map((part) => Math.max(0, Math.min(255, Math.round(part))).toString(16).padStart(2, "0"))
+        .join("")
+        .toUpperCase();
+}
+
+function rgbToHsv(r: number, g: number, b: number): Hsv {
+    const rn = r / 255;
+    const gn = g / 255;
+    const bn = b / 255;
+    const max = Math.max(rn, gn, bn);
+    const min = Math.min(rn, gn, bn);
+    const d = max - min;
+    let h = 0;
+    if (d !== 0) {
+        if (max === rn) h = ((gn - bn) / d) % 6;
+        else if (max === gn) h = (bn - rn) / d + 2;
+        else h = (rn - gn) / d + 4;
+        h *= 60;
+        if (h < 0) h += 360;
+    }
+    return { h, s: max === 0 ? 0 : d / max, v: max };
+}
+
+function hsvToRgb(h: number, s: number, v: number): [number, number, number] {
+    const c = v * s;
+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    const m = v - c;
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    if (h < 60) [r, g, b] = [c, x, 0];
+    else if (h < 120) [r, g, b] = [x, c, 0];
+    else if (h < 180) [r, g, b] = [0, c, x];
+    else if (h < 240) [r, g, b] = [0, x, c];
+    else if (h < 300) [r, g, b] = [x, 0, c];
+    else [r, g, b] = [c, 0, x];
+    return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
+}
+
+function hueCss(h: number) {
+    const [r, g, b] = hsvToRgb(h, 1, 1);
+    return `#${rgbToHex(r, g, b)}`;
+}
+
+const CHECKER =
+    "linear-gradient(45deg,#c8c8c8 25%,transparent 25%),linear-gradient(-45deg,#c8c8c8 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#c8c8c8 75%),linear-gradient(-45deg,transparent 75%,#c8c8c8 75%)";
+
+function parseBackgroundImageUrl(value?: string): string | null {
+    const match = (value ?? "").match(/url\(\s*['"]?([^'")]+)['"]?\s*\)/i);
+    return match?.[1] ?? null;
+}
+
+function parseGradientStartColor(value?: string): string | null {
+    return parseCssGradient(value)?.stops[0]?.color ?? null;
+}
+
+function gradientFromColor(color?: string) {
+    return serializeCssGradient(defaultCssGradient(color && color !== "transparent" ? color : "#DDDDDD"));
+}
+
+export function ColorField({
+    value,
+    property,
+    onPreview,
+    onCommit,
+    mapValue = (next) => next,
+    swatchStyle,
+    themeTokens = [],
+    onCreateToken: _onCreateToken,
+    compact,
+}: {
+    value?: string;
+    property: string;
+    onPreview: (styles: Styles) => void;
+    onCommit: (styles: Styles) => void;
+    mapValue?: (value: string) => string;
+    swatchStyle?: React.CSSProperties;
+    themeTokens?: ThemeToken[];
+    onCreateToken?: (name: string, value: string) => void | Promise<void>;
+    compact?: boolean;
+}) {
+    const colorValue = value ?? "";
+    const bound = cssVarName(colorValue);
+    const boundToken = themeTokens.find((token) => token.name === bound);
+    const parsedColor = cssColorToHex(boundToken?.value || colorValue);
+    const [draft, setDraft] = useState(parsedColor.hex);
+    const [alpha, setAlpha] = useState(parsedColor.alpha);
+    const [hsv, setHsv] = useState<Hsv>(() => {
+        const [r, g, b] = hexToRgb(parsedColor.hex);
+        return rgbToHsv(r, g, b);
+    });
+    const [visible, setVisible] = useState(colorValue !== "transparent");
+    const [open, setOpen] = useState(false);
+    const svRef = useRef<HTMLDivElement>(null);
+    const hueRef = useRef<HTMLDivElement>(null);
+    const alphaRef = useRef<HTMLDivElement>(null);
+    const hsvRef = useRef(hsv);
+    const alphaLiveRef = useRef(alpha);
+    hsvRef.current = hsv;
+    alphaLiveRef.current = alpha;
+
+    useEffect(() => {
+        const next = cssColorToHex(colorValue);
+        setDraft(next.hex);
+        setAlpha(next.alpha);
+        setVisible(colorValue !== "transparent");
+        const [r, g, b] = hexToRgb(next.hex);
+        setHsv(rgbToHsv(r, g, b));
+    }, [colorValue]);
+
+    const normalizedHex = draft.replace(/^#/, "").slice(0, 6).toUpperCase();
+    const color = /^[0-9A-F]{6}$/.test(normalizedHex) ? `#${normalizedHex}` : "#FFFFFF";
+    const colorTokens = themeTokens.filter((token) => {
+        const v = token.value.trim();
+        return (
+            v.startsWith("#")
+            || /^(rgb|hsl|oklch|oklab|lab|color)\(/i.test(v)
+            || /color|background|foreground|accent|fill|stroke/i.test(token.name)
+        );
+    });
+    const detach = () => {
+        const resolved = cssColor(normalizedHex, alpha);
+        onPreview({ [property]: mapValue(resolved) });
+        onCommit({ [property]: mapValue(resolved) });
+    };
+
+    const cssColor = (hex: string, opacity = alpha) => {
+        if (!/^[0-9A-F]{6}$/.test(hex)) return `#${hex}`;
+        if (opacity >= 100) return `#${hex}`;
+        const alphaHex = Math.round((Math.max(0, opacity) / 100) * 255)
+            .toString(16)
+            .padStart(2, "0")
+            .toUpperCase();
+        return `#${hex}${alphaHex}`;
+    };
+
+    const emit = (hex: string, opacity: number, commit: boolean) => {
+        const cssValue = cssColor(hex, opacity);
+        onPreview({ [property]: mapValue(cssValue) });
+        if (commit) onCommit({ [property]: mapValue(cssValue) });
+    };
+
+    const applyHsv = (next: Hsv, commit = false) => {
+        setHsv(next);
+        const [r, g, b] = hsvToRgb(next.h, next.s, next.v);
+        const hex = rgbToHex(r, g, b);
+        setDraft(hex);
+        emit(hex, alpha, commit);
+    };
+
+    const updateColor = (next: string, commit = false) => {
+        const hex = next.replace(/^#/, "").slice(0, 6).toUpperCase();
+        setDraft(hex);
+        if (/^[0-9A-F]{6}$/.test(hex)) {
+            const [r, g, b] = hexToRgb(hex);
+            setHsv(rgbToHsv(r, g, b));
+            emit(hex, alpha, commit);
+            return;
+        }
+        onPreview({ [property]: mapValue(next) });
+        if (commit) onCommit({ [property]: mapValue(next) });
+    };
+
+    const updateAlpha = (next: number, commit = false) => {
+        const opacity = Math.max(0, Math.min(100, next || 0));
+        setAlpha(opacity);
+        emit(normalizedHex, opacity, commit);
+    };
+
+    const scrub = (
+        ref: React.RefObject<HTMLDivElement | null>,
+        onMove: (x: number, y: number, rect: DOMRect) => void,
+        onEnd: () => void,
+    ) =>
+        (event: React.PointerEvent<HTMLDivElement>) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const el = ref.current;
+            if (!el) return;
+            el.setPointerCapture(event.pointerId);
+            const move = (pointer: PointerEvent) => {
+                const rect = el.getBoundingClientRect();
+                onMove(
+                    Math.min(1, Math.max(0, (pointer.clientX - rect.left) / rect.width)),
+                    Math.min(1, Math.max(0, (pointer.clientY - rect.top) / rect.height)),
+                    rect,
+                );
+            };
+            const up = () => {
+                window.removeEventListener("pointermove", move);
+                window.removeEventListener("pointerup", up);
+                onEnd();
+            };
+            move(event.nativeEvent);
+            window.addEventListener("pointermove", move);
+            window.addEventListener("pointerup", up, { once: true });
+        };
+
+    return (
+        <div className="flex items-center gap-1">
+            <div
+                className={cn(
+                    CONTROL,
+                    "flex min-w-0 flex-1 items-center overflow-hidden rounded-md border border-border bg-panel-hover",
+                    "focus-within:border-border-focus focus-within:ring-1 focus-within:ring-border-focus",
+                )}
+            >
+                <TokenMenu
+                    property={property}
+                    tokens={colorTokens.length ? colorTokens : undefined}
+                    onPick={(cssValue) => {
+                        onPreview({ [property]: mapValue(cssValue) });
+                        onCommit({ [property]: mapValue(cssValue) });
+                    }}
+                    onCustom={() => setOpen(true)}
+                >
+                    <span
+                        className="ml-1.5 size-4 shrink-0 cursor-pointer overflow-hidden rounded-[3px] border border-border"
+                        style={{
+                            backgroundImage: CHECKER,
+                            backgroundSize: "6px 6px",
+                            backgroundPosition: "0 0,0 3px,3px -3px,-3px 0",
+                        }}
+                        aria-label={`${property} tokens`}
+                    >
+                        <span
+                            className="block size-full"
+                            style={
+                                swatchStyle ?? {
+                                    backgroundColor: cssColor(normalizedHex),
+                                }
+                            }
+                        />
+                    </span>
+                </TokenMenu>
+                <DropdownMenu open={open} onOpenChange={setOpen}>
+                    <DropdownMenuTrigger asChild>
+                        <button type="button" className="sr-only" tabIndex={-1} aria-hidden />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                        side="left"
+                        align="start"
+                        sideOffset={12}
+                        className="w-60 rounded-xl border border-border bg-surface-4 p-3"
+                    >
+                        <div className="mb-2 flex items-center justify-between">
+                            <span className="text-sm font-medium text-text-primary">Custom</span>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                aria-label="Close color picker"
+                                className="size-6"
+                                onClick={() => setOpen(false)}
+                            >
+                                <Icon icon={Dismiss20Regular} />
+                            </Button>
+                        </div>
+                        <div
+                            ref={svRef}
+                            className="relative mb-2 h-36 w-full cursor-crosshair overflow-hidden rounded-md"
+                            style={{
+                                backgroundColor: hueCss(hsv.h),
+                                backgroundImage:
+                                    "linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent)",
+                            }}
+                            onPointerDown={scrub(
+                                svRef,
+                                (x, y) => applyHsv({ ...hsvRef.current, s: x, v: 1 - y }),
+                                () => applyHsv(hsvRef.current, true),
+                            )}
+                        >
+                            <span
+                                className="pointer-events-none absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow"
+                                style={{ left: `${hsv.s * 100}%`, top: `${(1 - hsv.v) * 100}%`, backgroundColor: color }}
+                            />
+                        </div>
+                        <div
+                            ref={hueRef}
+                            className="relative mb-2 h-3 w-full cursor-ew-resize rounded-full"
+                            style={{
+                                background:
+                                    "linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)",
+                            }}
+                            onPointerDown={scrub(
+                                hueRef,
+                                (x) => applyHsv({ ...hsvRef.current, h: x * 360 }),
+                                () => applyHsv(hsvRef.current, true),
+                            )}
+                        >
+                            <span
+                                className="pointer-events-none absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow"
+                                style={{ left: `${(hsv.h / 360) * 100}%`, backgroundColor: hueCss(hsv.h) }}
+                            />
+                        </div>
+                        <div
+                            ref={alphaRef}
+                            className="relative mb-3 h-3 w-full cursor-ew-resize overflow-hidden rounded-full"
+                            style={{
+                                backgroundImage: CHECKER,
+                                backgroundSize: "8px 8px",
+                                backgroundPosition: "0 0,0 4px,4px -4px,-4px 0",
+                            }}
+                            onPointerDown={scrub(
+                                alphaRef,
+                                (x) => updateAlpha(Math.round(x * 100)),
+                                () => updateAlpha(alphaLiveRef.current, true),
+                            )}
+                        >
+                            <div
+                                className="absolute inset-0 rounded-full"
+                                style={{
+                                    background: `linear-gradient(to right, transparent, ${color})`,
+                                }}
+                            />
+                            <span
+                                className="pointer-events-none absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow"
+                                style={{ left: `${alpha}%`, backgroundColor: cssColor(normalizedHex) }}
+                            />
+                        </div>
+                        <div className="flex h-8 items-stretch overflow-hidden rounded-md border border-border bg-panel-hover focus-within:border-border-focus focus-within:ring-1 focus-within:ring-border-focus">
+                            <span className="flex items-center border-r border-border px-2 text-xs font-medium text-text-muted">
+                                Hex
+                            </span>
+                            <Input
+                                value={normalizedHex}
+                                onChange={(event) => updateColor(event.target.value)}
+                                onBlur={() => updateColor(draft, true)}
+                                onKeyDown={(event) => {
+                                    if (event.key === "Enter") event.currentTarget.blur();
+                                    event.stopPropagation();
+                                }}
+                                className="h-full min-h-0 flex-1 rounded-none border-0 bg-transparent px-2 text-xs font-normal shadow-none ring-0 focus-visible:border-transparent focus-visible:ring-0"
+                                spellCheck={false}
+                            />
+                            <div className="flex h-full w-16 items-center border-l border-border">
+                                <Input
+                                    value={alpha}
+                                    onChange={(event) =>
+                                        updateAlpha(Number.parseInt(event.target.value, 10) || 0)
+                                    }
+                                    onBlur={() => updateAlpha(alpha, true)}
+                                    onKeyDown={(event) => {
+                                        if (event.key === "Enter") event.currentTarget.blur();
+                                        event.stopPropagation();
+                                    }}
+                                    className="h-full min-h-0 min-w-0 flex-1 rounded-none border-0 bg-transparent px-1 text-right text-xs font-normal shadow-none ring-0 focus-visible:border-transparent focus-visible:ring-0"
+                                    aria-label={`${property} opacity`}
+                                />
+                                <span className="pr-2 text-xs font-medium text-text-muted">%</span>
+                            </div>
+                        </div>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+                <Input
+                    value={bound ? formatVariableDisplayName(bound) : draft}
+                    onChange={(event) => {
+                        const next = event.target.value;
+                        if (bound) {
+                            updateColor(next.replace(/^#/, ""));
+                            return;
+                        }
+                        updateColor(next);
+                    }}
+                    onBlur={() => updateColor(draft, true)}
+                    onKeyDown={(event) => {
+                        if (event.key === "Enter") event.currentTarget.blur();
+                    }}
+                    className="h-full min-h-0 flex-1 rounded-none border-0 bg-transparent px-1.5 py-0 text-xs font-normal shadow-none ring-0 focus-visible:border-transparent focus-visible:ring-0"
+                    spellCheck={false}
+                />
+                <Input
+                    value={alpha}
+                    onChange={(event) => updateAlpha(Number.parseInt(event.target.value, 10))}
+                    onBlur={() => updateAlpha(alpha, true)}
+                    className="h-full min-h-0 w-10 shrink-0 rounded-none border-0 bg-transparent px-0.5 text-right text-xs font-normal text-text-secondary shadow-none ring-0 focus-visible:border-transparent focus-visible:ring-0"
+                    aria-label={`${property} opacity`}
+                />
+                <span className="pr-2 text-xs font-medium text-text-muted">%</span>
+            </div>
+            {bound ? (
+                <IconButton label="Detach token" icon={LinkDismiss20Regular} onClick={detach} />
+            ) : null}
+            {compact ? null : (
+            <>
+            <IconButton
+                label="Toggle visibility"
+                icon={visible ? Eye20Regular : EyeOff20Regular}
+                active={visible}
+                onClick={() => {
+                    const next = visible ? "transparent" : cssColor(normalizedHex);
+                    setVisible(!visible);
+                    onPreview({ [property]: mapValue(next) });
+                    onCommit({ [property]: mapValue(next) });
+                }}
+            />
+            <IconButton
+                label="Remove"
+                icon={Subtract20Regular}
+                onClick={() => {
+                    setVisible(false);
+                    onPreview({ [property]: mapValue("transparent") });
+                    onCommit({ [property]: mapValue("transparent") });
+                }}
+            />
+            </>
+            )}
+        </div>
+    );
+}
+
+function ImageFillField({
+    image,
+    size,
+    onPreview,
+    onCommit,
+}: {
+    image?: string;
+    size?: string;
+    onPreview: (styles: Styles) => void;
+    onCommit: (styles: Styles) => void;
+}) {
+    const url = parseBackgroundImageUrl(image);
+    const fit =
+        size === "contain"
+            ? "contain"
+            : size === "100% 100%" || size === "fill"
+              ? "fill"
+              : "cover";
+
+    const write = (styles: Styles, commit = true) => {
+        onPreview(styles);
+        if (commit) onCommit(styles);
+    };
+
+    const pickImage = async () => {
+        const { open } = await import("@tauri-apps/plugin-dialog");
+        const selectedPath = await open({
+            multiple: false,
+            filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp", "svg", "avif"] }],
+        });
+        if (typeof selectedPath !== "string") return;
+        const src = convertFileSrc(selectedPath);
+        write({
+            "background-image": `url("${src}")`,
+            "background-size": fit === "fill" ? "100% 100%" : fit,
+            "background-position": "center",
+            "background-repeat": "no-repeat",
+        });
+    };
+
+    return (
+        <div className="space-y-2">
+            <div
+                className="relative flex h-24 items-center justify-center overflow-hidden rounded-md border border-border"
+                style={{
+                    backgroundImage: CHECKER,
+                    backgroundSize: "12px 12px",
+                    backgroundPosition: "0 0,0 6px,6px -6px,-6px 0",
+                }}
+            >
+                {url ? (
+                    <div
+                        className="absolute inset-0"
+                        style={{
+                            backgroundImage: `url("${url}")`,
+                            backgroundSize: fit === "fill" ? "100% 100%" : fit,
+                            backgroundPosition: "center",
+                            backgroundRepeat: "no-repeat",
+                        }}
+                    />
+                ) : (
+                    <span className="text-xs text-text-muted">No image</span>
+                )}
+            </div>
+            <div className="flex gap-1">
+                <Button
+                    variant="secondary"
+                    size="xs"
+                    className={cn(CONTROL, "min-w-0 flex-1 justify-start border border-border bg-panel-hover px-2")}
+                    onClick={() => void pickImage()}
+                >
+                    Upload from computer
+                </Button>
+                <IconButton
+                    label="Clear image"
+                    icon={Subtract20Regular}
+                    onClick={() =>
+                        write({
+                            "background-image": "none",
+                            "background-size": "auto",
+                        })
+                    }
+                />
+            </div>
+            <SelectField
+                value={fit}
+                options={[
+                    ["cover", "Cover"],
+                    ["contain", "Contain"],
+                    ["fill", "Fill"],
+                ]}
+                onChange={(value) => {
+                    const backgroundSize = value === "fill" ? "100% 100%" : value;
+                    write({ "background-size": backgroundSize });
+                }}
+            />
+        </div>
+    );
+}
+
+function fillModeFromStyle(style: Styles): "solid" | "gradient" | "image" {
+    const image = css(style, "background-image", "none");
+    if (image.includes("gradient")) return "gradient";
+    if (parseBackgroundImageUrl(image)) return "image";
+    return "solid";
+}
+
+function GradientEditor({
+    value,
+    fallbackColor,
+    paint,
+    themeTokens,
+    onPreview,
+    onCommit,
+    onCreateToken,
+}: {
+    value?: string;
+    fallbackColor?: string;
+    paint: "color" | "background";
+    themeTokens: ThemeToken[];
+    onPreview: (styles: Styles) => void;
+    onCommit: (styles: Styles) => void;
+    onCreateToken?: (name: string, value: string) => void | Promise<void>;
+}) {
+    const parsed = parseCssGradient(value) ?? defaultCssGradient(fallbackColor);
+    const [selected, setSelected] = useState(0);
+    const barRef = useRef<HTMLDivElement>(null);
+    const active = parsed.stops[Math.min(selected, parsed.stops.length - 1)] ?? parsed.stops[0]!;
+
+    const write = (next: CssGradient, commit: boolean) => {
+        const image = serializeCssGradient(next);
+        const styles: Styles =
+            paint === "color"
+                ? {
+                      "background-image": image,
+                      "background-clip": "text",
+                      "-webkit-background-clip": "text",
+                      color: "transparent",
+                  }
+                : {
+                      "background-image": image,
+                      "background-color": next.stops[0]?.color ?? fallbackColor ?? "#FFFFFF",
+                  };
+        onPreview(styles);
+        if (commit) onCommit(styles);
+    };
+
+    const patchStop = (index: number, patch: Partial<CssGradient["stops"][number]>, commit: boolean) => {
+        const stops = parsed.stops.map((stop, i) => (i === index ? { ...stop, ...patch } : stop));
+        write({ ...parsed, stops }, commit);
+    };
+
+    const scrubBar = (event: React.PointerEvent) => {
+        const el = barRef.current;
+        if (!el) return;
+        event.preventDefault();
+        el.setPointerCapture(event.pointerId);
+        const move = (pointer: PointerEvent) => {
+            const rect = el.getBoundingClientRect();
+            const at = Math.max(0, Math.min(100, ((pointer.clientX - rect.left) / rect.width) * 100));
+            patchStop(selected, { at }, false);
+        };
+        const up = () => {
+            window.removeEventListener("pointermove", move);
+            window.removeEventListener("pointerup", up);
+            write(parseCssGradient(value) ?? parsed, true);
+        };
+        move(event.nativeEvent);
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", up, { once: true });
+    };
+
+    return (
+        <div className="space-y-1.5">
+            <div
+                ref={barRef}
+                className="relative h-6 cursor-ew-resize overflow-visible rounded-md border border-border"
+                style={{ backgroundImage: serializeCssGradient({ ...parsed, kind: "linear", angle: 90 }) }}
+                onPointerDown={(event) => {
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const at = Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100));
+                    const nearest = parsed.stops.reduce(
+                        (best, stop, index) =>
+                            Math.abs(stop.at - at) < Math.abs(parsed.stops[best]!.at - at) ? index : best,
+                        0,
+                    );
+                    if (Math.abs(parsed.stops[nearest]!.at - at) < 8) {
+                        setSelected(nearest);
+                        scrubBar(event);
+                        return;
+                    }
+                    const stops = [...parsed.stops, { color: active.color, at }].sort((a, b) => a.at - b.at);
+                    setSelected(stops.findIndex((stop) => stop.at === at));
+                    write({ ...parsed, stops }, true);
+                }}
+            >
+                {parsed.stops.map((stop, index) => (
+                    <button
+                        key={`${stop.color}-${stop.at}-${index}`}
+                        type="button"
+                        title={`Stop ${index + 1}`}
+                        onPointerDown={(event) => {
+                            event.stopPropagation();
+                            setSelected(index);
+                            scrubBar(event);
+                        }}
+                        className="absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rotate-45 border border-white shadow"
+                        style={{ left: `${stop.at}%`, background: stop.color }}
+                    />
+                ))}
+            </div>
+            <div className="flex items-center gap-1">
+                <SelectField
+                    value={parsed.kind}
+                    options={[
+                        ["linear", "Linear"],
+                        ["radial", "Radial"],
+                        ["conic", "Conic"],
+                    ]}
+                    onChange={(kind) => write({ ...parsed, kind: kind as CssGradient["kind"] }, true)}
+                />
+                <IconButton
+                    label="Add stop"
+                    icon={Add20Regular}
+                    onClick={() => {
+                        const at = 50;
+                        const stops = [...parsed.stops, { color: active.color, at }].sort((a, b) => a.at - b.at);
+                        setSelected(stops.findIndex((stop) => stop.at === at && stop.color === active.color));
+                        write({ ...parsed, stops }, true);
+                    }}
+                />
+            </div>
+            {parsed.stops.map((stop, index) => (
+                <ColorField
+                    key={`${index}-${stop.at}`}
+                    compact
+                    value={stop.color}
+                    property="background-color"
+                    themeTokens={themeTokens}
+                    onCreateToken={onCreateToken}
+                    onPreview={(styles) => {
+                        const color = styles["background-color"];
+                        if (color) patchStop(index, { color }, false);
+                    }}
+                    onCommit={(styles) => {
+                        const color = styles["background-color"];
+                        if (color) patchStop(index, { color }, true);
+                    }}
+                />
+            ))}
+        </div>
+    );
+}
+
+export function FillControls({
+    style,
+    setStyle: _setStyle,
+    onPreview,
+    onCommit,
+    themeTokens = [],
+    paint = "background",
+    onCreateToken,
+}: {
+    style: Styles;
+    setStyle: (property: string, value: string) => void;
+    onPreview: (styles: Styles) => void;
+    onCommit: (styles: Styles) => void;
+    themeTokens?: ThemeToken[];
+    paint?: "color" | "background";
+    onCreateToken?: (name: string, value: string) => void | Promise<void>;
+}) {
+    const derived = fillModeFromStyle(style);
+    const [imageIntent, setImageIntent] = useState(false);
+    useEffect(() => {
+        if (derived === "image") setImageIntent(true);
+        if (derived === "gradient") setImageIntent(false);
+    }, [derived]);
+    const mode: "solid" | "gradient" | "image" =
+        imageIntent && derived !== "gradient" ? "image" : derived;
+
+    const gradientImage = css(style, "background-image", "none");
+    const solidProperty = paint === "color" ? "color" : "background-color";
+    const solidValue = paint === "color" ? style.color : style["background-color"];
+
+    const clearTextClip = {
+        "background-clip": "border-box",
+        "-webkit-background-clip": "border-box",
+    };
+
+    return (
+        <>
+            <Segment
+                value={mode}
+                onChange={(value) => {
+                    const next = value as "solid" | "gradient" | "image";
+                    if (next === "solid") {
+                        setImageIntent(false);
+                        onPreview({
+                            "background-image": "none",
+                            ...clearTextClip,
+                            ...(paint === "color"
+                                ? { color: parseGradientStartColor(gradientImage) || style.color || "#000000" }
+                                : {}),
+                        });
+                        onCommit({
+                            "background-image": "none",
+                            ...clearTextClip,
+                            ...(paint === "color"
+                                ? { color: parseGradientStartColor(gradientImage) || style.color || "#000000" }
+                                : {}),
+                        });
+                        return;
+                    }
+                    if (next === "gradient") {
+                        setImageIntent(false);
+                        const color =
+                            parseGradientStartColor(gradientImage)
+                            ?? (paint === "color" ? style.color : style["background-color"])
+                            ?? "#DDDDDD";
+                        const image = gradientFromColor(color);
+                        const styles: Styles =
+                            paint === "color"
+                                ? {
+                                      "background-image": image,
+                                      "background-clip": "text",
+                                      "-webkit-background-clip": "text",
+                                      color: "transparent",
+                                  }
+                                : {
+                                      "background-color": color,
+                                      "background-image": image,
+                                  };
+                        onPreview(styles);
+                        onCommit(styles);
+                        return;
+                    }
+                    setImageIntent(true);
+                }}
+                items={[
+                    { value: "solid", icon: Stop20Filled, title: "Solid fill" },
+                    { value: "gradient", icon: WeatherSunny20Regular, title: "Gradient fill" },
+                    { value: "image", icon: Camera20Filled, title: "Image fill" },
+                ]}
+            />
+            {mode === "image" ? (
+                <ImageFillField
+                    image={style["background-image"]}
+                    size={style["background-size"]}
+                    onPreview={onPreview}
+                    onCommit={onCommit}
+                />
+            ) : mode === "gradient" ? (
+                <GradientEditor
+                    value={gradientImage}
+                    fallbackColor={paint === "color" ? style.color : style["background-color"]}
+                    paint={paint}
+                    themeTokens={themeTokens}
+                    onPreview={onPreview}
+                    onCommit={onCommit}
+                    onCreateToken={onCreateToken}
+                />
+            ) : (
+                <ColorField
+                    value={solidValue}
+                    property={solidProperty}
+                    themeTokens={themeTokens}
+                    onCreateToken={onCreateToken}
+                    onPreview={onPreview}
+                    onCommit={onCommit}
+                />
+            )}
+        </>
+    );
+}
