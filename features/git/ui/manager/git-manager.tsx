@@ -3,7 +3,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
-import { usePathname, useSearchParams } from "next/navigation";
+import { useIsMounted } from "@/lib/ui/use-mounted";
 import { listen } from "@tauri-apps/api/event";
 import { BetterShapeLogo } from "@/components/ui/bettershape-logo";
 import { SearchInput } from "@/components/ui/search";
@@ -17,7 +17,7 @@ import { GitHubSection } from "@/features/git/ui/github/section";
 import { ReleasesPage } from "@/features/git/ui/github/releases-page";
 import { ActionsConsole } from "@/features/git/ui/actions/console";
 import { LocalTags } from "@/features/git/ui/tags/panel";
-import { useFilter, coerceGitSection, persistGitSection, readStoredGitSection } from "./filter-context";
+import { useFilter, coerceGitSection, persistGitSection } from "./filter-context";
 import { GitPageChrome } from "./chrome";
 import { useGitRepos } from "@/lib/git/repos";
 import { LoadingBar } from "@/components/ui/loading";
@@ -73,14 +73,6 @@ const NAV: NavGroup[] = [
 
 const ALL_SECTION_IDS = NAV.flatMap((g) => g.children.map((c) => c.id));
 
-function initialSection(pathname: string | null, query: string | null): GitSectionId {
-    const fromQuery = coerceGitSection(query);
-    if (fromQuery && ALL_SECTION_IDS.includes(fromQuery)) return fromQuery;
-    const stored = readStoredGitSection();
-    if (stored && ALL_SECTION_IDS.includes(stored)) return stored;
-    if (pathname?.startsWith("/branch")) return "branches";
-    return "source";
-}
 
 type GitEmptyReason = "no-project" | "no-repo" | "no-commits";
 
@@ -91,18 +83,19 @@ function GitManagerIntro({ children }: { children: React.ReactNode }) {
     const [ready, setReady] = useState(false);
     const [visible, setVisible] = useState(false);
 
+    const hydrated = useIsMounted();
+    const [seen, setSeen] = useState<boolean | null>(null);
+    if (hydrated && seen === null) {
+        let stored = false;
+        try { stored = sessionStorage.getItem(INTRO_SEEN_KEY) === "1"; } catch { /* use the intro */ }
+        setSeen(stored);
+        if (stored) setReady(true);
+    }
+
     useEffect(() => {
+        if (seen !== false) return;
         let cancelled = false;
         let t2: number | undefined;
-
-        try {
-            if (sessionStorage.getItem(INTRO_SEEN_KEY) === "1") {
-                setReady(true);
-                return;
-            }
-        } catch {
-            /* ignore */
-        }
 
         const fadeIn = requestAnimationFrame(() => {
             if (!cancelled) setVisible(true);
@@ -128,7 +121,7 @@ function GitManagerIntro({ children }: { children: React.ReactNode }) {
             if (t1 !== undefined) window.clearTimeout(t1);
             if (t2 !== undefined) window.clearTimeout(t2);
         };
-    }, []);
+    }, [seen]);
 
     if (!ready) {
         return (
@@ -290,8 +283,6 @@ function GitManagerGate() {
 }
 
 function ManagerShell() {
-    const search = useSearchParams();
-    const pathname = usePathname();
     const { section, setSection } = useFilter();
     const { resetLoading } = useLoading();
     const { navPortalTarget, sidebarExpanded = true, onClose } = useContext(GitEmbedCtx);
@@ -303,30 +294,21 @@ function ManagerShell() {
     // Mount each heavy local pane once, then keep it alive while switching.
     const [visited, setVisited] = useState<Set<string>>(() => new Set([section]));
 
-    useEffect(() => {
-        setVisited((prev) => {
-            if (prev.has(section)) return prev;
-            const next = new Set(prev);
-            next.add(section);
-            return next;
-        });
-    }, [section]);
+    if (!visited.has(section)) setVisited(previous => new Set([...previous, section]));
 
     // Clear any leaked global loading starts when leaving Git Manager.
     useEffect(() => () => resetLoading(), [resetLoading]);
 
-    // Sync once from URL / storage on mount; avoid resetting to Source on reload.
+    const hydrated = useIsMounted();
     useEffect(() => {
-        const next = initialSection(pathname, search.get("section"));
-        setSection(next);
-        setActiveLeafId(next);
-        persistGitSection(next);
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only
-    }, []);
+        if (hydrated) persistGitSection(section);
+    }, [hydrated, section]);
 
-    useEffect(() => {
+    const [sectionInputs, setSectionInputs] = useState<readonly unknown[] | null>(null);
+    if (sectionInputs === null || !Object.is(sectionInputs[0], section)) {
+        setSectionInputs([section]);
         setActiveLeafId(section);
-    }, [section]);
+    }
 
     useEffect(() => {
         let unlisten: (() => void) | undefined;
@@ -369,10 +351,11 @@ function ManagerShell() {
         })).filter((group) => group.children.length > 0);
     }, [query]);
 
-    useEffect(() => {
-        if (!query.trim()) return;
-        setExpandedGroups(new Set(filteredNav.map((g) => g.id)));
-    }, [query, filteredNav]);
+    const [filterInputs, setFilterInputs] = useState<readonly unknown[] | null>(null);
+    if (filterInputs === null || !Object.is(filterInputs[0], query) || !Object.is(filterInputs[1], filteredNav)) {
+        setFilterInputs([query, filteredNav]);
+        if (query.trim()) setExpandedGroups(new Set(filteredNav.map(group => group.id)));
+    }
 
     const toggleGroup = (id: string) => {
         setExpandedGroups((prev) => {

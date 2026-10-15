@@ -344,6 +344,12 @@ export default function Source({
     const { startLoading, stopLoading } = useLoading();
     const settings = useSettings();
 
+    if (project_path && !scmRepoPath && !reposLoading && (isGitRepo || changes.length || lastCommit)) {
+        setIsGitRepo(false);
+        setChanges([]);
+        setLastCommit(null);
+    }
+
     const refresh = useCallback(async (opts?: { track?: boolean }) => {
         const track = opts?.track !== false;
         const repoPath = scmRepoPath;
@@ -391,13 +397,8 @@ export default function Source({
                 if (track) stopLoading();
                 statusProgress.remove("git-refresh");
             }
-        } else if (project_path && !reposLoading) {
-            // Only clear after discovery finished with no repo — never during the async gap.
-            setIsGitRepo(false);
-            setChanges([]);
-            setLastCommit(null);
         }
-    }, [project_path, scmRepoPath, repoKey, repos.length, reposLoading, startLoading, stopLoading]);
+    }, [project_path, scmRepoPath, repoKey, repos.length, startLoading, stopLoading]);
 
     useEffect(() => {
         // Soft refresh on mount — don't flash the global loading bar for routine open.
@@ -743,14 +744,19 @@ export default function Source({
         }
     };
 
+    const [diffInputs, setDiffInputs] = useState<readonly unknown[] | null>(null);
+    if (diffInputs === null || !Object.is(diffInputs[0], embedded) || !Object.is(diffInputs[1], gitRepo) || !Object.is(diffInputs[2], diffFile)) {
+        setDiffInputs([embedded, gitRepo, diffFile]);
+        setDiffOriginal("");
+        setDiffModified("");
+        setDiffLoading(Boolean(embedded && gitRepo && diffFile));
+    }
+
     useEffect(() => {
         if (!embedded || !gitRepo || !diffFile) {
-            setDiffOriginal("");
-            setDiffModified("");
             return;
         }
         let cancelled = false;
-        setDiffLoading(true);
         void (async () => {
             try {
                 const original = await commands
