@@ -37,6 +37,10 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The build below executes PR-controlled code (npm scripts, Next
+          # build). Never leave the GITHUB_TOKEN in .git/config for it.
+          persist-credentials: false
 
       - name: Setup
         uses: ./.github/actions/setup

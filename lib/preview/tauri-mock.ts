@@ -596,6 +596,10 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
             width: 1, height: 1, currentBranch: state.branch, total: 1, truncated: false,
         }),
         git_diff: () => "diff --git a/src/App.tsx b/src/App.tsx\n+// preview fixture change\n",
+        // Diff panes read file contents through this command; serve the
+        // seeded file body so the unstaged side is not blank in preview.
+        git_get_item_content: (args) =>
+            state.files[`${PREVIEW_PROJECT_PATH}/${String(args.filePath ?? "")}`] ?? "",
         git_file_diff: () => "diff --git a/src/App.tsx b/src/App.tsx\n+// preview fixture change\n",
         git_list_hunks: (args) => ({ path: String(args.path ?? ""), staged: false, hunks: [] }),
         git_stash_list: () => [],
