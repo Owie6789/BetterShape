@@ -619,3 +619,55 @@ a symlink escape, and the missing `out/` instruction with exit 1;
 `npm run skills:verify` pass with 53 of 53 locked skills verified.
 `npm run test:rust` could not run in this sandbox because Cargo is
 not installed; no Rust source changed.
+
+## Fifth wave addendum: DeepSource 48 and Sonar reliability (2026-10-15)
+
+DeepSource run bf6c29e2 on 665e931: 48 introduced JavaScript issues, down
+from 143. Enumerated by exact-code dashboard queries: JS-R1005 x29,
+JS-C1002 x2 (variable g, split-context 76 and 96), JS-0415 x2 (sections
+445, source 1007), JS-D1001 x1 (playwright resolveChromium), JS-0833 x4
+(scripts/qa .mjs files), JS-0357 x2 (ChangeRowMenu and promptSyncNow used
+before defined), JS-W1041 x1 (checkCommitPreconditions boolean return),
+JS-0045 x2 (consistent-return in two source effects). Five issues remain
+unenumerated; the dashboard renders only ten issues per filtered view and
+ignores offset parameters. SonarCloud gate ERROR comes from eight
+typescript:S9383 floating promises in source.tsx (lines 346, 903, 910,
+919, 931, 943, 955, 1711). Plan: reduce every flagged function to
+cyclomatic complexity at most 5 by verbatim extraction, rename g, move
+the two use-before-define declarations earlier, simplify the boolean
+return, give both effects a single return point, mark the eight floating
+promises with void, document resolveChromium, and rename the four QA
+scripts from .mjs to .js so the DeepSource parser reads them as modules
+under the package type field. Behaviour preservation is verified per file
+with tsc, the threshold-5 probe, ESLint, and the test suites.
+
+Correction recorded during the fifth wave: two scripted splices in
+lib/preview/tauri-mock.ts used stale string indexes after an earlier
+replacement changed the file length, which truncated remapActiveFile and
+duplicated part of removePath. Root cause: reusing offsets computed
+before a length-changing edit instead of recomputing them. Corrected
+understanding: recompute every index against the current text before
+each splice, and run tsc immediately after each scripted edit. Behaviour
+change: none; both regions were restored verbatim and tsc, the
+threshold-5 probe, and ESLint pass on the file.
+
+Fifth wave verification note: in dev-server mode the Playwright audit
+spec for /settings fails with a React hydration mismatch (title versus
+data-native-title on a provider card button, mutated by
+components/ui/suppress-native-tooltips.tsx). The identical failure
+reproduces on the unmodified 665e931 head in dev mode, so this wave did
+not introduce it; the same spec passes in E2E_STATIC=1 mode, which is
+what the PR preview workflow runs. No behaviour change was made for it
+in this wave.
+
+Fifth wave verification on the working tree before commit: npx tsc
+--noEmit pass; npm run lint 0 errors and 157 warnings (same warning
+count as 665e931); threshold-5 cyclomatic and JSX-depth-4 probes clean
+on split-context, sections, source, tauri-mock, playwright.config,
+checkmark, welcome-screen, and status; doc-coverage probe zero
+undocumented named functions on the same files; npm run build:runtime
+and npm run build:preview pass; full Vitest 864 passed in 106 files;
+Playwright 25 passed in E2E_STATIC=1 mode; serve-static smoke check
+returns 200 for / under the renamed serve-static.js; npm run
+skills:verify 53 of 53; npm ci pass. Cargo is unavailable in the
+sandbox and no Rust source changed.

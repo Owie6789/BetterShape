@@ -20,12 +20,12 @@ This file is the operator/agent runbook.
 |---|---|
 | `npm run dev:browser` | Next dev server (port 48921) with mocks on. Open `http://localhost:48921`, add `?seed=project` for the fake open project. |
 | `npm run test:e2e` | Playwright suite; auto-starts `dev:browser`. First run on a new machine: `npx playwright install chromium`. |
-| `npm run qa` | Full suite + a compact pass/fail summary for agents (`scripts/qa/run-qa.mjs`). Exit code = Playwright's. |
+| `npm run qa` | Full suite + a compact pass/fail summary for agents (`scripts/qa/run-qa.js`). Exit code = Playwright's. |
 | `npm run qa:audit` | Only the route crawl (`e2e/audit.spec.ts`): axe scan + screenshot + console/IPC inventory per route. |
 | `npm run test:e2e:ui` | Playwright UI mode for debugging selectors/flakes interactively. |
 | `npm run test:e2e:update-snapshots` | Regenerate `@visual` baselines. Review the image diff like code. |
 | `npm run build:preview` | Production static export with mocks on → `out/` (what Vercel deploys). |
-| `npm run preview:browser` | Serve `out/` on port 48921 (`scripts/qa/serve-static.mjs`). |
+| `npm run preview:browser` | Serve `out/` on port 48921 (`scripts/qa/serve-static.js`). |
 | `E2E_STATIC=1 npm run test:e2e` | Run the suite against the static bundle instead of the dev server (CI/preview mode). |
 
 Reports: `playwright-report/index.html` (human), `test-results/results.json`

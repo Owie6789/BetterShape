@@ -60,6 +60,13 @@ const applySandboxLibs = () => {
     process.env.LD_LIBRARY_PATH = existing ? `${libs}:${existing}` : libs;
 };
 
+/** Whether this Node runtime satisfies @sparticuz/chromium's range (^22.17.0 || >=24.0.0). */
+const sparticuzNodeSupported = (): boolean => {
+    const [major, minor] = process.versions.node.split(".").map(Number);
+    return major >= 24 || (major === 22 && minor >= 17);
+};
+
+/** Resolve the @sparticuz/chromium fallback for sandboxed Linux hosts without a usable bundled browser. */
 const sandboxChromium = (): { executablePath?: string; args?: string[] } => {
     // @sparticuz/chromium ships an Amazon Linux (glibc x86_64/arm64) build.
     // Handing it to macOS or Windows would fail at launch with a confusing
@@ -67,10 +74,8 @@ const sandboxChromium = (): { executablePath?: string; args?: string[] } => {
     if (process.platform !== "linux") return {};
     // @sparticuz/chromium requires Node ^22.17.0 || >=24.0.0; on older
     // runtimes fail loudly instead of silently returning no browser.
-    const [major, minor] = process.versions.node.split(".").map(Number);
     // Exactly the package's range: ^22.17.0 || >=24.0.0 (Node 23 excluded).
-    const supported = major >= 24 || (major === 22 && minor >= 17);
-    if (!supported) {
+    if (!sparticuzNodeSupported()) {
         throw new Error(
             `Playwright's bundled Chromium is unavailable and the @sparticuz/chromium fallback requires Node ^22.17.0 || >=24.0.0 (current: ${process.versions.node}). ` +
             "Install Node 22.17+ / 24+, run `npx playwright install chromium`, or set PLAYWRIGHT_CHROMIUM_PATH.",
@@ -103,6 +108,7 @@ const sandboxChromium = (): { executablePath?: string; args?: string[] } => {
     }
 };
 
+/** Pick the Chromium executable and args for this environment, honouring the explicit override first. */
 const resolveChromium = (): { executablePath?: string; args?: string[] } => {
     if (process.env.PLAYWRIGHT_CHROMIUM_PATH) {
         return { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH };

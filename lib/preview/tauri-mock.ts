@@ -236,11 +236,42 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         state.openFiles.push({ path, name, is_dirty: false });
     };
 
+    /** Parent directory of a fake-tree path. */
+    const parentDirOf = (path: string): string => {
+        const lastSlash = path.lastIndexOf("/");
+        return lastSlash >= 0 ? path.slice(0, lastSlash) || "/" : "/";
+    };
+
+    /** Delete every entry below `path/` from a fake-tree map. */
+    const deleteDescendants = <T,>(tree: Record<string, T>, path: string) => {
+        for (const key of Object.keys(tree)) {
+            if (key.startsWith(`${path}/`)) delete tree[key];
+        }
+    };
+
+    /** Remove a path's entry from its parent directory listing. */
+    const removeDirEntry = (path: string) => {
+        const entries = state.dirs[parentDirOf(path)];
+        if (!entries) return;
+        const index = entries.findIndex((e) => e.name === fileNameOf(path));
+        if (index >= 0) entries.splice(index, 1);
+    };
+
+    /** Close open tabs at or under a removed path and emit the new state. */
+    const closeTabsAtOrUnder = (path: string) => {
+        /** Whether a path is the removed path or one of its descendants. */
+        const vanished = (p: string) => p === path || p.startsWith(`${path}/`);
+        if (!state.openFiles.some((f) => vanished(f.path))) return;
+        state.openFiles = state.openFiles.filter((f) => !vanished(f.path));
+        if (state.activeFile && vanished(state.activeFile)) {
+            state.activeFile = state.openFiles[state.openFiles.length - 1]?.path ?? null;
+        }
+        emitProjectState();
+    };
+
     /** Register a created path in its parent directory listing. */
     const addDirEntry = (path: string, isDir: boolean) => {
-        const lastSlash = path.lastIndexOf("/");
-        const parent = lastSlash >= 0 ? path.slice(0, lastSlash) || "/" : "/";
-        const entries = state.dirs[parent];
+        const entries = state.dirs[parentDirOf(path)];
         if (!entries) return;
         const name = fileNameOf(path);
         if (!entries.some((e) => e.name === name)) entries.push({ name, is_dir: isDir });
@@ -250,85 +281,98 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
     const removeTree = (path: string) => {
         delete state.files[path];
         delete state.dirs[path];
-        for (const key of Object.keys(state.files)) {
-            if (key.startsWith(`${path}/`)) delete state.files[key];
-        }
-        for (const key of Object.keys(state.dirs)) {
-            if (key.startsWith(`${path}/`)) delete state.dirs[key];
-        }
-        const lastSlash = path.lastIndexOf("/");
-        const parent = lastSlash >= 0 ? path.slice(0, lastSlash) || "/" : "/";
-        const entries = state.dirs[parent];
-        if (entries) {
-            const index = entries.findIndex((e) => e.name === fileNameOf(path));
-            if (index >= 0) entries.splice(index, 1);
-        }
+        deleteDescendants(state.files, path);
+        deleteDescendants(state.dirs, path);
+        removeDirEntry(path);
     };
 
     /** Backend parity for delete/trash: open tabs at or under the removed path close. */
     const removePath = (path: string) => {
         if (!path) return;
         removeTree(path);
-        /** Whether a path is the removed path or one of its descendants. */
-        const vanished = (p: string) => p === path || p.startsWith(`${path}/`);
-        if (state.openFiles.some((f) => vanished(f.path))) {
-            state.openFiles = state.openFiles.filter((f) => !vanished(f.path));
-            if (state.activeFile && vanished(state.activeFile)) {
-                state.activeFile = state.openFiles[state.openFiles.length - 1]?.path ?? null;
+        closeTabsAtOrUnder(path);
+    };
+
+    /** Copy the entries at or under `oldPath` into a map keyed by the relocated paths. */
+    const snapshotEntries = <T,>(
+        tree: Record<string, T>,
+        oldPath: string,
+        newPath: string,
+        copy: (value: T) => T,
+    ): Map<string, T> => {
+        const moved = new Map<string, T>();
+        if (oldPath in tree) moved.set(newPath, copy(tree[oldPath]));
+        for (const key of Object.keys(tree)) {
+            if (key.startsWith(`${oldPath}/`)) {
+                moved.set(`${newPath}${key.slice(oldPath.length)}`, copy(tree[key]));
             }
-            emitProjectState();
         }
+        return moved;
     };
 
     /** Snapshot a fake-tree subtree (the path itself plus every descendant) for relocation. */
-    const snapshotSubtree = (oldPath: string, newPath: string, isDir: boolean) => {
+    const snapshotSubtree = (oldPath: string, newPath: string) => {
         // Snapshot the subtree first: removeTree below deletes the sources.
-        const movedFiles = new Map<string, string>();
-        if (oldPath in state.files) movedFiles.set(newPath, state.files[oldPath]);
-        for (const key of Object.keys(state.files)) {
-            if (key.startsWith(`${oldPath}/`)) {
-                movedFiles.set(`${newPath}${key.slice(oldPath.length)}`, state.files[key]);
-            }
-        }
-        const movedDirs = new Map<string, Array<{ name: string; is_dir: boolean }>>();
-        if (isDir) movedDirs.set(newPath, state.dirs[oldPath].map((e) => ({ ...e })));
-        for (const key of Object.keys(state.dirs)) {
-            if (key.startsWith(`${oldPath}/`)) {
-                movedDirs.set(`${newPath}${key.slice(oldPath.length)}`, state.dirs[key].map((e) => ({ ...e })));
-            }
-        }
+        const movedFiles = snapshotEntries(state.files, oldPath, newPath, (content) => content);
+        const movedDirs = snapshotEntries(state.dirs, oldPath, newPath, (entries) => entries.map((e) => ({ ...e })));
         return { movedFiles, movedDirs };
+    };
+
+    /** Remap one open tab to the relocated path; returns whether the tab moved. */
+    const remapOpenTab = (open: { path: string; name: string }, oldPath: string, newPath: string): boolean => {
+        if (open.path === oldPath) {
+            open.path = newPath;
+            open.name = fileNameOf(newPath);
+            return true;
+        }
+        if (open.path.startsWith(`${oldPath}/`)) {
+            open.path = `${newPath}${open.path.slice(oldPath.length)}`;
+            return true;
+        }
+        return false;
+    };
+
+    /** Remap the active file to the relocated path. */
+    const remapActiveFile = (oldPath: string, newPath: string) => {
+        if (state.activeFile === oldPath) {
+            state.activeFile = newPath;
+        } else if (state.activeFile?.startsWith(`${oldPath}/`)) {
+            state.activeFile = `${newPath}${state.activeFile.slice(oldPath.length)}`;
+        }
     };
 
     /** Point open tabs at the moved path, including tabs on moved descendants. */
     const remapOpenTabs = (oldPath: string, newPath: string) => {
         let tabsMoved = false;
         for (const open of state.openFiles) {
-            if (open.path === oldPath) {
-                open.path = newPath;
-                open.name = fileNameOf(newPath);
-                tabsMoved = true;
-            } else if (open.path.startsWith(`${oldPath}/`)) {
-                open.path = `${newPath}${open.path.slice(oldPath.length)}`;
-                tabsMoved = true;
-            }
+            if (remapOpenTab(open, oldPath, newPath)) tabsMoved = true;
         }
-        if (state.activeFile === oldPath) state.activeFile = newPath;
-        else if (state.activeFile?.startsWith(`${oldPath}/`)) {
-            state.activeFile = `${newPath}${state.activeFile.slice(oldPath.length)}`;
-        }
+        remapActiveFile(oldPath, newPath);
         if (tabsMoved) emitProjectState();
+    };
+
+    /** Whether a fake-tree path can move or copy to the target. */
+    const canRelocate = (oldPath: string, newPath: string): boolean => {
+        const isDir = oldPath in state.dirs;
+        return Boolean(oldPath && newPath && oldPath !== newPath && (isDir || oldPath in state.files));
+    };
+
+    /** Write a relocated subtree snapshot into the fake tree. */
+    const writeSnapshot = (snapshot: {
+        movedFiles: Map<string, string>;
+        movedDirs: Map<string, Array<{ name: string; is_dir: boolean }>>;
+    }) => {
+        for (const [path, content] of snapshot.movedFiles) state.files[path] = content;
+        for (const [path, entries] of snapshot.movedDirs) state.dirs[path] = entries;
     };
 
     /** Move or copy a fake-tree path, including directory children and open tabs. */
     const relocatePath = (oldPath: string, newPath: string, copy: boolean) => {
-        if (!oldPath || !newPath || oldPath === newPath) return;
+        if (!canRelocate(oldPath, newPath)) return;
         const isDir = oldPath in state.dirs;
-        if (!isDir && !(oldPath in state.files)) return;
-        const { movedFiles, movedDirs } = snapshotSubtree(oldPath, newPath, isDir);
+        const snapshot = snapshotSubtree(oldPath, newPath);
         if (!copy) removeTree(oldPath);
-        for (const [path, content] of movedFiles) state.files[path] = content;
-        for (const [path, entries] of movedDirs) state.dirs[path] = entries;
+        writeSnapshot(snapshot);
         addDirEntry(newPath, isDir);
         if (!copy) remapOpenTabs(oldPath, newPath);
     };
@@ -639,41 +683,51 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         return BOOLEAN_GETTER.test(cmd) ? false : null;
     };
 
+    /** Register one plugin event subscription; returns its subscription id. */
+    const registerListener = (event: string, handlerId: unknown): number | undefined => {
+        if (typeof handlerId !== "number") return undefined;
+        const subscriptionId = nextEventId++;
+        subscriptionCallbacks.set(subscriptionId, handlerId);
+        if (!listeners.has(event)) listeners.set(event, new Set());
+        listeners.get(event)?.add(handlerId);
+        return subscriptionId;
+    };
+
+    /** Remove plugin event subscriptions named by any numeric id spelling. */
+    const untrackListener = (args: Record<string, unknown>) => {
+        const eventName = args.event as string;
+        // Real client sends { event, eventId } where eventId is the
+        // subscription id returned by listen; translate it back to the
+        // callback id; accept other numeric spellings too.
+        const ids = new Set(
+            ["eventId", "handler", "id", "event_id"]
+                .map((key) => args[key])
+                .filter((v): v is number => typeof v === "number"),
+        );
+        ids.forEach((value) => {
+            const callbackId = subscriptionCallbacks.get(value) ?? value;
+            subscriptionCallbacks.delete(value);
+            listeners.get(eventName)?.delete(callbackId);
+        });
+    };
+
     /** Record plugin event subscriptions and removals for later delivery. */
     const trackListener = (cmd: string, args?: Record<string, unknown>): number | undefined => {
         if (typeof args?.event !== "string") return undefined;
-        const handlerId = (args as { handler?: unknown }).handler;
-        if (cmd === "plugin:event|listen") {
-            if (typeof handlerId !== "number") return undefined;
-            const subscriptionId = nextEventId++;
-            subscriptionCallbacks.set(subscriptionId, handlerId);
-            if (!listeners.has(args.event)) listeners.set(args.event, new Set());
-            listeners.get(args.event)?.add(handlerId);
-            return subscriptionId;
-        }
-        if (cmd === "plugin:event|unlisten") {
-            const eventName = args.event;
-            // Real client sends { event, eventId } where eventId is the
-            // subscription id returned by listen, translate it back to the
-            // callback id; accept other numeric spellings too.
-            const ids = new Set(
-                ["eventId", "handler", "id", "event_id"]
-                    .map((key) => (args as Record<string, unknown>)[key])
-                    .filter((v): v is number => typeof v === "number"),
-            );
-            ids.forEach((value) => {
-                const callbackId = subscriptionCallbacks.get(value) ?? value;
-                subscriptionCallbacks.delete(value);
-                listeners.get(eventName)?.delete(callbackId);
-            });
-        }
+        const eventArgs = args as Record<string, unknown>;
+        if (cmd === "plugin:event|listen") return registerListener(eventArgs.event as string, eventArgs.handler);
+        if (cmd === "plugin:event|unlisten") untrackListener(eventArgs);
         return undefined;
     };
+
+    /** Whether tracking produced the subscription id a listen call must return. */
+    const isListenResult = (cmd: string, tracked: number | undefined): tracked is number =>
+        cmd === "plugin:event|listen" && typeof tracked === "number";
 
     /** Dispatch one invoke to its modeled handler or safe fallback. */
     const handle = (cmd: string, args?: Record<string, unknown>): unknown => {
         const tracked = trackListener(cmd, args);
-        if (cmd === "plugin:event|listen" && typeof tracked === "number") return tracked;
+        if (isListenResult(cmd, tracked)) return tracked;
         const handler = handlers[cmd];
         return handler ? handler(args ?? {}) : fallback(cmd, args ?? {});
     };

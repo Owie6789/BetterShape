@@ -74,17 +74,34 @@ import { GitManagerTrigger } from "@/features/git/ui/manager/git-manager-trigger
 import { GitChromeActions } from "@/features/git/ui/manager/chrome";
 import { useGitRepos } from "@/lib/git/repos";
 
+/** Error fragments that mean "no usable repo here", not a failure worth surfacing. */
+const BENIGN_GIT_ERROR_FRAGMENTS = [
+    "not a git repository",
+    "could not find repository",
+    ".invalid",
+    "unborn",
+];
+
+/** Whether error text reports an invalid git reference. */
+const hasInvalidReference = (message: string): boolean =>
+    message.includes("reference") && message.includes("not valid");
+
 /** Errors that mean "no usable repo here", not a failure worth surfacing. */
 const isBenignGitError = (err: unknown): boolean => {
     const message = String(err).toLowerCase();
-    return (
-        message.includes("not a git repository")
-        || message.includes("could not find repository")
-        || message.includes(".invalid")
-        || message.includes("unborn")
-        || (message.includes("reference") && message.includes("not valid"))
-    );
+    return BENIGN_GIT_ERROR_FRAGMENTS.some((fragment) => message.includes(fragment)) || hasInvalidReference(message);
 };
+
+/** Display text for an unknown thrown value. */
+const errorText = (err: unknown): string => err instanceof Error ? err.message : String(err);
+
+/** Last segment of a file path, falling back to the whole path. */
+const pathBaseName = (path: string): string => path.split(/[/\\]/).pop() || path;
+
+/** Absolute path for a repo-relative path, adding the separator only when missing. */
+const repoAbsolutePath = (repo: string, path: string): string =>
+    repo + (repo.endsWith('/') || repo.endsWith('\\') ? '' : '/') + path;
+
 import { confirm } from "@tauri-apps/plugin-dialog";
 
 const STATUS_COLOR: Record<string, string> = {
@@ -95,85 +112,27 @@ const STATUS_COLOR: Record<string, string> = {
     D: "var(--git-deleted)",
 };
 
-/** One changed-file row: staging checkbox, status letter, and context menu. */
-const ChangeRow = ({
-    file,
-    projectPath,
-    onRefresh,
-    onShowDiff,
-    selected,
-}: {
-    file: GitFileParams;
-    projectPath: string;
-    onRefresh: () => void;
-    onShowDiff: (path: string, staged: boolean) => void;
-    selected?: boolean;
-}) => {
-    /** Stage or unstage this file, matching its current staged state. */
-    const handleToggleState = async () => {
-        try {
-            if (file.staged) {
-                await commands.gitUnstage(projectPath, file.path);
-            } else {
-                await commands.gitStage(projectPath, file.path);
-            }
-            onRefresh();
-        } catch (err) {
-            notify.gitError(err);
-        }
-    };
+/** File name and parent-path label for one change row. */
+const ChangeRowPathLabel = ({ path }: { path: string }) => (
+    <span className="text-sm font-medium text-text-primary group-hover:text-text-primary transition-colors flex-1 truncate mr-2 pointer-events-none">
+        {path.split(/[/\\]/).pop()}
+        {path.includes('/') || path.includes('\\') ? (
+            <span className="text-text-secondary ml-1 font-normal">
+                {path.split(/[/\\]/).slice(0, -1).join('/')}
+            </span>
+        ) : null}
+    </span>
+);
 
-    return (
-        <ContextMenu>
-            <ContextMenuTrigger>
-                <div
-                    onClick={() => onShowDiff(file.path, file.staged)}
-                    className={cn(
-                        "flex items-center px-0.5 py-0.5 cursor-pointer rounded-lg group relative h-7 transition-colors",
-                        selected ? "bg-panel-hover" : "hover:bg-panel-hover",
-                    )}
-                >
-                    <div
-                        className="w-5 h-5 flex items-center justify-center shrink-0 cursor-pointer text-text-muted hover:text-text-primary mr-1"
-                        onClick={handleToggleState}
-                        onPointerDown={(e) => e.stopPropagation()}
-                    >
-                        <Checkmark
-                            checked={file.staged}
-                            onCheckedChange={() => handleToggleState()}
-                            label={file.staged ? `Unstage ${file.path}` : `Stage ${file.path}`}
-                        />
-                    </div>
-                    <div className="w-4 mr-1.5 flex justify-center shrink-0 pointer-events-none">
-                        <FileIcon name={file.path.split(/[/\\]/).pop() || ""} />
-                    </div>
-                    <span className="text-sm font-medium text-text-primary group-hover:text-text-primary transition-colors flex-1 truncate mr-2 pointer-events-none">
-                        {file.path.split(/[/\\]/).pop()}
-                        {file.path.includes('/') || file.path.includes('\\') ? (
-                            <span className="text-text-secondary ml-1 font-normal">
-                                {file.path.split(/[/\\]/).slice(0, -1).join('/')}
-                            </span>
-                        ) : null}
-                    </span>
-
-                    <span
-                        className="text-xs font-bold w-4 text-center shrink-0 pointer-events-none"
-                        style={{ color: STATUS_COLOR[file.status] ?? "var(--git-added)" }}
-                    >
-                        {file.status}
-                    </span>
-                </div>
-            </ContextMenuTrigger>
-            <ChangeRowMenu
-                file={file}
-                projectPath={projectPath}
-                onToggleState={handleToggleState}
-                onRefresh={onRefresh}
-                onShowDiff={onShowDiff}
-            />
-        </ContextMenu>
-    );
-};
+/** Coloured status letter for one change row. */
+const ChangeRowStatusLetter = ({ status }: { status: string }) => (
+    <span
+        className="text-xs font-bold w-4 text-center shrink-0 pointer-events-none"
+        style={{ color: STATUS_COLOR[status] ?? "var(--git-added)" }}
+    >
+        {status}
+    </span>
+);
 
 /** Context menu for one change row: stage toggle, diff, discard, copy path. */
 const ChangeRowMenu = ({
@@ -234,6 +193,154 @@ const ChangeRowMenu = ({
             );
 };
 
+/** One changed-file row: staging checkbox, status letter, and context menu. */
+const ChangeRow = ({
+    file,
+    projectPath,
+    onRefresh,
+    onShowDiff,
+    selected,
+}: {
+    file: GitFileParams;
+    projectPath: string;
+    onRefresh: () => void;
+    onShowDiff: (path: string, staged: boolean) => void;
+    selected?: boolean;
+}) => {
+    /** Stage or unstage this file, matching its current staged state. */
+    const handleToggleState = async () => {
+        try {
+            if (file.staged) {
+                await commands.gitUnstage(projectPath, file.path);
+            } else {
+                await commands.gitStage(projectPath, file.path);
+            }
+            onRefresh();
+        } catch (err) {
+            notify.gitError(err);
+        }
+    };
+
+    return (
+        <ContextMenu>
+            <ContextMenuTrigger>
+                <div
+                    onClick={() => onShowDiff(file.path, file.staged)}
+                    className={cn(
+                        "flex items-center px-0.5 py-0.5 cursor-pointer rounded-lg group relative h-7 transition-colors",
+                        selected ? "bg-panel-hover" : "hover:bg-panel-hover",
+                    )}
+                >
+                    <div
+                        className="w-5 h-5 flex items-center justify-center shrink-0 cursor-pointer text-text-muted hover:text-text-primary mr-1"
+                        onClick={handleToggleState}
+                        onPointerDown={(e) => e.stopPropagation()}
+                    >
+                        <Checkmark
+                            checked={file.staged}
+                            onCheckedChange={() => handleToggleState()}
+                            label={file.staged ? `Unstage ${file.path}` : `Stage ${file.path}`}
+                        />
+                    </div>
+                    <div className="w-4 mr-1.5 flex justify-center shrink-0 pointer-events-none">
+                        <FileIcon name={file.path.split(/[/\\]/).pop() || ""} />
+                    </div>
+                    <ChangeRowPathLabel path={file.path} />
+
+                    <ChangeRowStatusLetter status={file.status} />
+                </div>
+            </ContextMenuTrigger>
+            <ChangeRowMenu
+                file={file}
+                projectPath={projectPath}
+                onToggleState={handleToggleState}
+                onRefresh={onRefresh}
+                onShowDiff={onShowDiff}
+            />
+        </ContextMenu>
+    );
+};
+
+/** Header row for a change section: stage-all checkbox, title, and file count. */
+const ChangeSectionHeader = ({ title, count, isAllStaged, isSomeStaged, onToggleOpen, onToggleStage }: {
+    title: string;
+    count: number;
+    isAllStaged: boolean;
+    isSomeStaged: boolean;
+    onToggleOpen: () => void;
+    onToggleStage: () => void;
+}) => (
+    <div
+        className="flex items-center group py-1 rounded-lg shrink-0 cursor-pointer hover:bg-panel-hover transition-colors"
+        onClick={onToggleOpen}
+    >
+        <div className="w-4 h-4 -mr-2.5 flex items-center justify-center shrink-0 text-text-primary hover:text-text-primary" />
+        <div
+            className="flex shrink-0 items-center justify-center h-full mr-2"
+            onClick={(e) => {
+                e.stopPropagation();
+            }}
+        >
+            <Checkmark
+                checked={isAllStaged ? true : isSomeStaged ? "indeterminate" : false}
+                onCheckedChange={onToggleStage}
+                label={isAllStaged ? "Unstage all changes" : "Stage all changes"}
+            />
+        </div>
+        <span className="text-sm font-normal text-text-secondary group-hover:text-text-primary transition-colors">
+            {title} <span className="text-text-muted font-normal ml-1">{count} files</span>
+        </span>
+    </div>
+);
+
+/** Windowed change rows for a section, with the Show more control. */
+const ChangeSectionRows = ({ isOpen, files, visibleCount, setVisibleCount, title, projectPath, onRefresh, onShowDiff, selectedPath, selectedStaged }: {
+    isOpen: boolean;
+    files: GitFileParams[];
+    visibleCount: number;
+    setVisibleCount: React.Dispatch<React.SetStateAction<number>>;
+    title: string;
+    projectPath: string;
+    onRefresh: () => void;
+    onShowDiff: (path: string, staged: boolean) => void;
+    selectedPath?: string | null;
+    selectedStaged?: boolean | null;
+}) => (
+    <>
+        {isOpen && (
+            <div className="space-y-0.5 mt-1">
+                {files.slice(0, visibleCount).map((file) => (
+                    <ChangeRow
+                        key={`${title}-${file.path}-${file.staged ? "s" : "u"}`}
+                        file={file}
+                        projectPath={projectPath}
+                        onRefresh={onRefresh}
+                        onShowDiff={onShowDiff}
+                        selected={
+                            selectedPath === file.path && selectedStaged === file.staged
+                        }
+                    />
+                ))}
+                {files.length > visibleCount ? (
+                    <div className="flex items-center gap-2 px-2 py-1.5">
+                        <p className="text-xs text-text-muted">
+                            Showing {visibleCount} of {files.length} files.
+                        </p>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                            onClick={() => setVisibleCount((count) => count + 400)}
+                        >
+                            Show more
+                        </Button>
+                    </div>
+                ) : null}
+            </div>
+        )}
+    </>
+);
+
 /** A collapsible staged/unstaged group of change rows (windowed, with Show more). */
 const ChangeSection = ({
     title,
@@ -270,60 +377,49 @@ const ChangeSection = ({
 
     return (
         <div className="flex flex-col">
-            <div
-                className="flex items-center group py-1 rounded-lg shrink-0 cursor-pointer hover:bg-panel-hover transition-colors"
-                onClick={onToggleOpen}
-            >
-                <div className="w-4 h-4 -mr-2.5 flex items-center justify-center shrink-0 text-text-primary hover:text-text-primary" />
-                <div
-                    className="flex shrink-0 items-center justify-center h-full mr-2"
-                    onClick={(e) => {
-                        e.stopPropagation();
-                    }}
-                >
-                    <Checkmark
-                        checked={isAllStaged ? true : isSomeStaged ? "indeterminate" : false}
-                        onCheckedChange={onToggleStage}
-                        label={isAllStaged ? "Unstage all changes" : "Stage all changes"}
-                    />
-                </div>
-                <span className="text-sm font-normal text-text-secondary group-hover:text-text-primary transition-colors">
-                    {title} <span className="text-text-muted font-normal ml-1">{files.length} files</span>
-                </span>
-            </div>
-            {isOpen && (
-                <div className="space-y-0.5 mt-1">
-                    {files.slice(0, visibleCount).map((file) => (
-                        <ChangeRow
-                            key={`${title}-${file.path}-${file.staged ? "s" : "u"}`}
-                            file={file}
-                            projectPath={projectPath}
-                            onRefresh={onRefresh}
-                            onShowDiff={onShowDiff}
-                            selected={
-                                selectedPath === file.path && selectedStaged === file.staged
-                            }
-                        />
-                    ))}
-                    {files.length > visibleCount ? (
-                        <div className="flex items-center gap-2 px-2 py-1.5">
-                            <p className="text-xs text-text-muted">
-                                Showing {visibleCount} of {files.length} files.
-                            </p>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 px-2 text-xs"
-                                onClick={() => setVisibleCount((count) => count + 400)}
-                            >
-                                Show more
-                            </Button>
-                        </div>
-                    ) : null}
-                </div>
-            )}
+            <ChangeSectionHeader
+                title={title}
+                count={files.length}
+                isAllStaged={isAllStaged}
+                isSomeStaged={isSomeStaged}
+                onToggleOpen={onToggleOpen}
+                onToggleStage={onToggleStage}
+            />
+            <ChangeSectionRows
+                isOpen={isOpen}
+                files={files}
+                visibleCount={visibleCount}
+                setVisibleCount={setVisibleCount}
+                title={title}
+                projectPath={projectPath}
+                onRefresh={onRefresh}
+                onShowDiff={onShowDiff}
+                selectedPath={selectedPath}
+                selectedStaged={selectedStaged}
+            />
         </div>
     );
+};
+
+/** Read the original and modified text for one diff file. */
+const loadDiffContent = async (
+    gitRepo: string,
+    diffFile: { path: string; staged: boolean },
+): Promise<{ original: string; modified: string }> => {
+    const original = await commands
+        .gitGetItemContent(gitRepo, diffFile.path, diffFile.staged)
+        .catch(() => "");
+    let modified = "";
+    if (diffFile.staged) {
+        modified = await commands
+            .gitGetItemContent(gitRepo, diffFile.path, false)
+            .catch(() => "");
+    } else {
+        modified = await commands
+            .readFile(repoAbsolutePath(gitRepo, diffFile.path))
+            .catch(() => "");
+    }
+    return { original, modified };
 };
 
 /** Load the original/modified pair for the embedded diff view; clears when no diff is selected. */
@@ -339,26 +435,13 @@ const useEmbeddedDiffContent = (
         if (!embedded || !gitRepo || !diffFile) {
             setDiffOriginal("");
             setDiffModified("");
-            return;
+            return undefined;
         }
         let cancelled = false;
         setDiffLoading(true);
-        (async () => {
+        void (async () => {
             try {
-                const original = await commands
-                    .gitGetItemContent(gitRepo, diffFile.path, diffFile.staged)
-                    .catch(() => "");
-                let modified = "";
-                if (diffFile.staged) {
-                    modified = await commands
-                        .gitGetItemContent(gitRepo, diffFile.path, false)
-                        .catch(() => "");
-                } else {
-                    const divider = gitRepo.endsWith("/") || gitRepo.endsWith("\\") ? "" : "/";
-                    modified = await commands
-                        .readFile(`${gitRepo}${divider}${diffFile.path}`)
-                        .catch(() => "");
-                }
+                const { original, modified } = await loadDiffContent(gitRepo, diffFile);
                 if (!cancelled) {
                     setDiffOriginal(original);
                     setDiffModified(modified);
@@ -377,6 +460,18 @@ const useEmbeddedDiffContent = (
         };
     }, [embedded, gitRepo, diffFile, setDiffOriginal, setDiffModified, setDiffLoading]);
 };
+
+/** Whether a refresh has both a project and a repo to query. */
+const hasRepoTarget = (
+    projectPath: string | null | undefined,
+    repoPath: string | null,
+): repoPath is string => Boolean(projectPath && repoPath);
+
+/** Whether refresh should clear status: project open, discovery done, no repo. */
+const shouldClearWithoutRepo = (
+    projectPath: string | null | undefined,
+    reposLoading: boolean,
+): boolean => Boolean(projectPath && !reposLoading);
 
 /** Status refresh for one project+repo, dropping results written after a repo switch. */
 const useGitStatusRefresh = (args: {
@@ -407,7 +502,7 @@ const useGitStatusRefresh = (args: {
         const keyAtStart = repoKey;
         /** Whether the repo changed after this refresh started. */
         const stale = () => latestRepoKeyRef.current !== keyAtStart;
-        if (projectPath && repoPath) {
+        if (hasRepoTarget(projectPath, repoPath)) {
             statusProgress.push("git-refresh", "Refreshing git status...");
             if (track) startLoading();
             try {
@@ -422,7 +517,7 @@ const useGitStatusRefresh = (args: {
                             setIsGitRepo(reposCount > 0);
                             setChanges([]);
                         } else {
-                            notify.error("Source Control Error", `Failed to load git status: ${err instanceof Error ? err.message : String(err)}`);
+                            notify.error("Source Control Error", `Failed to load git status: ${errorText(err)}`);
                         }
                     }),
                     commands.gitCurrentBranch(repoPath).then((branch) => {
@@ -448,7 +543,7 @@ const useGitStatusRefresh = (args: {
                 if (track) stopLoading();
                 statusProgress.remove("git-refresh");
             }
-        } else if (projectPath && !reposLoading) {
+        } else if (shouldClearWithoutRepo(projectPath, reposLoading)) {
             // Only clear after discovery finished with no repo — never during the async gap.
             setIsGitRepo(false);
             setChanges([]);
@@ -484,6 +579,28 @@ const confirmAmendPublished = async (repo: string): Promise<boolean> => {
     return rewrite;
 };
 
+/** Offer to sync immediately after a commit that leaves the branch ahead. */
+const promptSyncNow = async (handleSync: () => Promise<void>): Promise<void> => {
+    const syncNow = await confirm(
+        "Commit created. Sync with remote now?",
+        {
+            title: "Sync",
+            kind: "info",
+            okLabel: "Sync",
+            cancelLabel: "Not now",
+        },
+    );
+    if (syncNow) {
+        await handleSync();
+    }
+};
+
+/** Whether a finished commit should offer an immediate sync. */
+const shouldPromptSyncAfterCommit = (
+    args: { promptSyncAfter: boolean; hasRemote: boolean },
+    ahead: number,
+): boolean => args.promptSyncAfter && args.hasRemote && ahead > 0;
+
 /** After a commit: refresh sync state and optionally prompt to sync. */
 const runPostCommit = async (args: {
     gitRepo: string;
@@ -502,25 +619,28 @@ const runPostCommit = async (args: {
     }
     args.refresh();
     notify.success("Git", args.amend ? "Commit amended" : "Commit successful");
-    if (args.promptSyncAfter && args.hasRemote && ahead > 0) {
+    if (shouldPromptSyncAfterCommit(args, ahead)) {
         await promptSyncNow(args.handleSync);
     }
 };
 
-/** Offer to sync immediately after a commit that leaves the branch ahead. */
-const promptSyncNow = async (handleSync: () => Promise<void>): Promise<void> => {
-    const syncNow = await confirm(
-        "Commit created. Sync with remote now?",
+/** Stage changes into an amended commit when the user agrees. Returns false to abort. */
+const ensureStagedForAmend = async (
+    repo: string,
+    changes: GitFileParams[],
+): Promise<boolean> => {
+    if (changes.length === 0) return true;
+    const stageAll = await confirm(
+        "Stage all changes into the amended commit?",
         {
-            title: "Sync",
+            title: "Amend commit",
             kind: "info",
-            okLabel: "Sync",
-            cancelLabel: "Not now",
+            okLabel: "Stage & Amend",
+            cancelLabel: "Amend message only",
         },
     );
-    if (syncNow) {
-        await handleSync();
-    }
+    if (stageAll) await stageUnstaged(repo, changes);
+    return true;
 };
 
 /** Ask before staging everything into a commit with nothing staged. Returns false to abort. */
@@ -545,18 +665,7 @@ const ensureStagedForCommit = async (
         await stageUnstaged(repo, changes);
         return true;
     }
-    if (changes.length === 0) return true;
-    const stageAll = await confirm(
-        "Stage all changes into the amended commit?",
-        {
-            title: "Amend commit",
-            kind: "info",
-            okLabel: "Stage & Amend",
-            cancelLabel: "Amend message only",
-        },
-    );
-    if (stageAll) await stageUnstaged(repo, changes);
-    return true;
+    return ensureStagedForAmend(repo, changes);
 };
 
 /** Confirm the composer message when the user enabled confirm-before-commit. Returns false to abort. */
@@ -573,6 +682,13 @@ const confirmCommitMessage = async (amend: boolean, fullMessage: string): Promis
     );
     return ok;
 };
+
+/** Whether an amend may proceed: only a published amend needs confirmation. */
+const mayAmendWithRemote = async (
+    amend: boolean,
+    hasRemote: boolean,
+    gitRepo: string,
+): Promise<boolean> => !amend || !hasRemote || (await confirmAmendPublished(gitRepo));
 
 /** Check the guard rails before a commit or amend runs: title, amend target, published-amend confirm. */
 const checkCommitPreconditions = async (
@@ -593,8 +709,34 @@ const checkCommitPreconditions = async (
         notify.error("Git", "Nothing to amend");
         return false;
     }
-    if (amend && hasRemote && !(await confirmAmendPublished(gitRepo))) return false;
-    return true;
+    return mayAmendWithRemote(amend, hasRemote, gitRepo);
+};
+
+/** Join a commit title and description into the full message. */
+const buildCommitMessage = (commitTitle: string, commitDescription: string): string =>
+    commitDescription ? `${commitTitle}\n\n${commitDescription}` : commitTitle;
+
+/** Stage for a commit: everything for Commit All, else the staged-changes guard. Returns false to abort. */
+const stageForCommit = async (
+    repo: string,
+    all: boolean,
+    amend: boolean,
+    changes: GitFileParams[],
+): Promise<boolean> => {
+    if (all) {
+        await stageUnstaged(repo, changes);
+        return true;
+    }
+    return ensureStagedForCommit(repo, changes.filter((c: GitFileParams) => c.staged), amend, changes);
+};
+
+/** Run the commit command for a new commit or an amend. */
+const applyCommit = async (repo: string, fullMessage: string, amend: boolean): Promise<void> => {
+    if (amend) {
+        await commands.gitCommitAmend(repo, fullMessage);
+    } else {
+        await commands.gitCommit(repo, fullMessage);
+    }
 };
 
 /** Handle for the composer commit flow: amend guards, staging fallback, confirm, sync prompt. */
@@ -622,18 +764,10 @@ const useHandleCommit = (ctx: {
         if (!(await checkCommitPreconditions(ctx, amend))) return false;
         const gitRepo = ctx.gitRepo as string;
         try {
-            if (all) {
-                await stageUnstaged(gitRepo, changes);
-            } else if (!(await ensureStagedForCommit(gitRepo, changes.filter((c: GitFileParams) => c.staged), amend, changes))) {
-                return false;
-            }
-            const fullMessage = commitDescription ? `${commitTitle}\n\n${commitDescription}` : commitTitle;
+            if (!(await stageForCommit(gitRepo, all, amend, changes))) return false;
+            const fullMessage = buildCommitMessage(commitTitle, commitDescription);
             if (!(await confirmCommitMessage(amend, fullMessage))) return false;
-            if (amend) {
-                await commands.gitCommitAmend(gitRepo, fullMessage);
-            } else {
-                await commands.gitCommit(gitRepo, fullMessage);
-            }
+            await applyCommit(gitRepo, fullMessage, amend);
             ctx.setCommitTitle("");
             ctx.setCommitDescription("");
             ctx.setCommitSuggestionStatus("idle");
@@ -860,7 +994,7 @@ const useGitPanelHandlers = (ctx: {
                 await streamTextInto(description, setCommitDescription, { msPerChar: 4 });
             }
         } catch (err) {
-            notify.error("AI Error", err instanceof Error ? err.message : String(err));
+            notify.error("AI Error", errorText(err));
         } finally {
             setCommitSuggestionStatus("idle");
         }
@@ -874,7 +1008,7 @@ const useGitPanelHandlers = (ctx: {
             const text = await commands.explainGitChanges("conflict", { repoPath: gitRepo });
             setConflictHelp(text.trim());
         } catch (err) {
-            notify.error("AI Error", err instanceof Error ? err.message : String(err));
+            notify.error("AI Error", errorText(err));
         } finally {
             setConflictHelpLoading(false);
         }
@@ -887,8 +1021,8 @@ const useGitPanelHandlers = (ctx: {
             setDiffFile({ path, staged });
             return;
         }
-        const name = path.split(/[/\\]/).pop() || path;
-        const absPath = gitRepo + (gitRepo.endsWith('/') || gitRepo.endsWith('\\') ? '' : '/') + path;
+        const name = pathBaseName(path);
+        const absPath = repoAbsolutePath(gitRepo, path);
         try {
             await commands.gitOpenDiff(absPath, name, staged);
         } catch (e) {
@@ -900,14 +1034,14 @@ const useGitPanelHandlers = (ctx: {
     const stageAllChanges = async () => {
         if (!gitRepo) return;
         await commands.gitStageAll(gitRepo);
-        refresh();
+        void refresh();
     };
 
     /** Unstage every change (More actions menu). */
     const unstageAllChanges = async () => {
         if (!gitRepo) return;
         await commands.gitUnstageAll(gitRepo);
-        refresh();
+        void refresh();
     };
 
     /** Stash every change, including untracked files (More actions menu). */
@@ -916,7 +1050,7 @@ const useGitPanelHandlers = (ctx: {
         try {
             await commands.gitStashSave(gitRepo, "", true);
             notify.success("Git", "Changes stashed.");
-            refresh();
+            void refresh();
         } catch (e) {
             notify.gitError(e, "Stash failed");
         }
@@ -928,7 +1062,7 @@ const useGitPanelHandlers = (ctx: {
         try {
             await commands.gitStashPop(gitRepo, 0);
             notify.success("Git", "Stash applied and dropped.");
-            refresh();
+            void refresh();
         } catch (e) {
             notify.gitError(e, "Stash pop failed");
         }
@@ -940,7 +1074,7 @@ const useGitPanelHandlers = (ctx: {
         try {
             await commands.gitMergeAbort(gitRepo);
             notify.info("Git", "Merge aborted.");
-            refresh();
+            void refresh();
         } catch (e) {
             notify.gitError(e, "Merge abort failed");
         }
@@ -952,7 +1086,7 @@ const useGitPanelHandlers = (ctx: {
         try {
             await commands.gitRebaseAbort(gitRepo);
             notify.info("Git", "Rebase aborted.");
-            refresh();
+            void refresh();
         } catch (e) {
             notify.gitError(e, "Rebase abort failed");
         }
@@ -974,6 +1108,57 @@ const MoreActionsMenuTrigger = () => (
             <Icon icon={MoreHorizontal20Regular} />
         </Button>
     </DropdownMenuTrigger>
+);
+
+/** Dropdown portion of the More actions menu. */
+const MoreActionsDropdown = ({
+    handleSync,
+    handleFetch,
+    handlePull,
+    handlePush,
+    stageAllChanges,
+    unstageAllChanges,
+    stashChanges,
+    popLatestStash,
+    abortMerge,
+    abortRebase,
+    openRemoteDialog,
+    setIsGitRepo,
+}: {
+    handleSync: () => void;
+    handleFetch: () => void;
+    handlePull: () => void;
+    handlePush: () => void;
+    stageAllChanges: () => void;
+    unstageAllChanges: () => void;
+    stashChanges: () => void;
+    popLatestStash: () => void;
+    abortMerge: () => void;
+    abortRebase: () => void;
+    openRemoteDialog: () => void;
+    setIsGitRepo: (value: boolean) => void;
+}) => (
+    <DropdownMenu modal={false}>
+        <MoreActionsMenuTrigger />
+        <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuItem onClick={handleSync}>Sync (Pull / Push)</DropdownMenuItem>
+            <DropdownMenuItem onClick={handleFetch}>Fetch All</DropdownMenuItem>
+            <DropdownMenuItem onClick={handlePull}>Pull</DropdownMenuItem>
+            <DropdownMenuItem onClick={handlePush}>Push</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={stageAllChanges}>Stage All Changes</DropdownMenuItem>
+            <DropdownMenuItem onClick={unstageAllChanges}>Unstage All Changes</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={stashChanges}>Stash Changes</DropdownMenuItem>
+            <DropdownMenuItem onClick={popLatestStash}>Pop Latest Stash</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={abortMerge}>Abort Merge</DropdownMenuItem>
+            <DropdownMenuItem onClick={abortRebase}>Abort Rebase</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => openRemoteDialog()}>Manage Remotes...</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setIsGitRepo(false)}>Disconnect Repository</DropdownMenuItem>
+        </DropdownMenuContent>
+    </DropdownMenu>
 );
 
 /** More actions menu for the panel header: sync, staging, stash, merge, and remotes items. */
@@ -1006,27 +1191,20 @@ const MoreActionsMenu = ({
 }) => (
     <Tooltip content="More actions">
         <span className="inline-flex">
-            <DropdownMenu modal={false}>
-                <MoreActionsMenuTrigger />
-                <DropdownMenuContent align="end" className="w-48">
-                    <DropdownMenuItem onClick={handleSync}>Sync (Pull / Push)</DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleFetch}>Fetch All</DropdownMenuItem>
-                    <DropdownMenuItem onClick={handlePull}>Pull</DropdownMenuItem>
-                    <DropdownMenuItem onClick={handlePush}>Push</DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={stageAllChanges}>Stage All Changes</DropdownMenuItem>
-                    <DropdownMenuItem onClick={unstageAllChanges}>Unstage All Changes</DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={stashChanges}>Stash Changes</DropdownMenuItem>
-                    <DropdownMenuItem onClick={popLatestStash}>Pop Latest Stash</DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={abortMerge}>Abort Merge</DropdownMenuItem>
-                    <DropdownMenuItem onClick={abortRebase}>Abort Rebase</DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => openRemoteDialog()}>Manage Remotes...</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setIsGitRepo(false)}>Disconnect Repository</DropdownMenuItem>
-                </DropdownMenuContent>
-            </DropdownMenu>
+            <MoreActionsDropdown
+                handleSync={handleSync}
+                handleFetch={handleFetch}
+                handlePull={handlePull}
+                handlePush={handlePush}
+                stageAllChanges={stageAllChanges}
+                unstageAllChanges={unstageAllChanges}
+                stashChanges={stashChanges}
+                popLatestStash={popLatestStash}
+                abortMerge={abortMerge}
+                abortRebase={abortRebase}
+                openRemoteDialog={openRemoteDialog}
+                setIsGitRepo={setIsGitRepo}
+            />
         </span>
     </Tooltip>
 );
@@ -1313,6 +1491,84 @@ const PanelHeader = ({
     />
 );
 
+/** Embedded toolbar or panel header for the source chrome. */
+const SourceChromeHeaderSlot = ({ embedded, active, isGitRepo, project_path, refresh, handlePull, handlePush, handleSync, handleFetch, stageAllChanges, unstageAllChanges, stashChanges, popLatestStash, abortMerge, abortRebase, openRemoteDialog, setIsGitRepo }: {
+    embedded: boolean;
+    active: boolean;
+    isGitRepo: boolean;
+    project_path: string | null | undefined;
+    refresh: (opts?: { track?: boolean }) => void;
+    handlePull: () => void;
+    handlePush: () => void;
+    handleSync: () => void;
+    handleFetch: () => void;
+    stageAllChanges: () => void;
+    unstageAllChanges: () => void;
+    stashChanges: () => void;
+    popLatestStash: () => void;
+    abortMerge: () => void;
+    abortRebase: () => void;
+    openRemoteDialog: () => void;
+    setIsGitRepo: (value: boolean) => void;
+}) => (
+    <>
+        {embedded && active && isGitRepo ? (
+            <EmbeddedChromeActions refresh={refresh} handlePull={handlePull} handlePush={handlePush} handleSync={handleSync} />
+        ) : null}
+        {embedded ? null : (
+            <PanelHeader
+                embedded={embedded}
+                project_path={project_path}
+                isGitRepo={isGitRepo}
+                refresh={refresh}
+                handleSync={handleSync}
+                handleFetch={handleFetch}
+                handlePull={handlePull}
+                handlePush={handlePush}
+                stageAllChanges={stageAllChanges}
+                unstageAllChanges={unstageAllChanges}
+                stashChanges={stashChanges}
+                popLatestStash={popLatestStash}
+                abortMerge={abortMerge}
+                abortRebase={abortRebase}
+                openRemoteDialog={openRemoteDialog}
+                setIsGitRepo={setIsGitRepo}
+            />
+        )}
+    </>
+);
+
+/** Conflict banner slot, shown only while conflicts exist in a repo. */
+const SourceConflictBannerSlot = ({ changes, gitRepo, conflictHelp, conflictHelpLoading, runConflictHelp, refresh }: {
+    changes: GitFileParams[];
+    gitRepo: string | null;
+    conflictHelp: string | null;
+    conflictHelpLoading: boolean;
+    runConflictHelp: () => void;
+    refresh: (opts?: { track?: boolean }) => void;
+}) => (
+    <>
+        {changes.some((c) => c.status === "C") && gitRepo ? (
+            <ConflictBanner gitRepo={gitRepo} conflictHelp={conflictHelp} conflictHelpLoading={conflictHelpLoading} runConflictHelp={runConflictHelp} refresh={refresh} />
+        ) : null}
+    </>
+);
+
+/** Repository selector slot, shown only for multi-repo workspaces. */
+const SourceRepoSelectorSlot = ({ hasMultipleRepos, isGitRepo, repos, activeRepoPath, setActiveRepo }: {
+    hasMultipleRepos: boolean;
+    isGitRepo: boolean;
+    repos: GitRepoInfo[];
+    activeRepoPath: string | null;
+    setActiveRepo: (path: string) => void;
+}) => (
+    <>
+        {hasMultipleRepos && isGitRepo ? (
+            <RepoSelector repos={repos} activeRepoPath={activeRepoPath} setActiveRepo={setActiveRepo} />
+        ) : null}
+    </>
+);
+
 /** Chrome rendered above the source panel: embedded toolbar, panel header, conflict banner, and repo selector. */
 const SourceChrome = ({
     embedded,
@@ -1370,37 +1626,40 @@ const SourceChrome = ({
     abortRebase: () => void;
 }) => (
     <>
-        {embedded && active && isGitRepo ? (
-            <EmbeddedChromeActions refresh={refresh} handlePull={handlePull} handlePush={handlePush} handleSync={handleSync} />
-        ) : null}
-        {embedded ? null : (
-            <PanelHeader
-                embedded={embedded}
-                project_path={project_path}
-                isGitRepo={isGitRepo}
-                refresh={refresh}
-                handleSync={handleSync}
-                handleFetch={handleFetch}
-                handlePull={handlePull}
-                handlePush={handlePush}
-                stageAllChanges={stageAllChanges}
-                unstageAllChanges={unstageAllChanges}
-                stashChanges={stashChanges}
-                popLatestStash={popLatestStash}
-                abortMerge={abortMerge}
-                abortRebase={abortRebase}
-                openRemoteDialog={openRemoteDialog}
-                setIsGitRepo={setIsGitRepo}
-            />
-        )}
-
-        {changes.some((c) => c.status === "C") && gitRepo ? (
-            <ConflictBanner gitRepo={gitRepo} conflictHelp={conflictHelp} conflictHelpLoading={conflictHelpLoading} runConflictHelp={runConflictHelp} refresh={refresh} />
-        ) : null}
-
-        {hasMultipleRepos && isGitRepo && (
-            <RepoSelector repos={repos} activeRepoPath={activeRepoPath} setActiveRepo={setActiveRepo} />
-        )}
+        <SourceChromeHeaderSlot
+            embedded={embedded}
+            active={active}
+            isGitRepo={isGitRepo}
+            project_path={project_path}
+            refresh={refresh}
+            handlePull={handlePull}
+            handlePush={handlePush}
+            handleSync={handleSync}
+            handleFetch={handleFetch}
+            stageAllChanges={stageAllChanges}
+            unstageAllChanges={unstageAllChanges}
+            stashChanges={stashChanges}
+            popLatestStash={popLatestStash}
+            abortMerge={abortMerge}
+            abortRebase={abortRebase}
+            openRemoteDialog={openRemoteDialog}
+            setIsGitRepo={setIsGitRepo}
+        />
+        <SourceConflictBannerSlot
+            changes={changes}
+            gitRepo={gitRepo}
+            conflictHelp={conflictHelp}
+            conflictHelpLoading={conflictHelpLoading}
+            runConflictHelp={runConflictHelp}
+            refresh={refresh}
+        />
+        <SourceRepoSelectorSlot
+            hasMultipleRepos={hasMultipleRepos}
+            isGitRepo={isGitRepo}
+            repos={repos}
+            activeRepoPath={activeRepoPath}
+            setActiveRepo={setActiveRepo}
+        />
     </>
 );
 
@@ -1708,7 +1967,7 @@ const CommitComposer = ({
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
             e.preventDefault();
-            handleCommit(false, { promptSyncAfter: true });
+            void handleCommit(false, { promptSyncAfter: true });
         }
     };
     return (
@@ -1738,6 +1997,82 @@ const CommitComposer = ({
             onClick={() => handleGenerateCommitMessage()}
         />
     </div>
+    );
+};
+
+/** Commit and Commit (Amend) items of the commit options menu. */
+const CommitStandardItems = ({ commitTitle, changes, lastCommit, handleCommit }: {
+    commitTitle: string;
+    changes: GitFileParams[];
+    lastCommit: GitLogEntry | null;
+    handleCommit: CommitNow;
+}) => (
+    <>
+        <DropdownMenuItem
+            disabled={!commitTitle.trim() || changes.length === 0}
+            onClick={() =>
+                handleCommit(false, {
+                    promptSyncAfter: true,
+                })
+            }
+        >
+            Commit
+        </DropdownMenuItem>
+        <DropdownMenuItem
+            disabled={!commitTitle.trim() || !lastCommit}
+            onClick={() =>
+                handleCommit(false, {
+                    amend: true,
+                    promptSyncAfter: true,
+                })
+            }
+        >
+            Commit (Amend)
+        </DropdownMenuItem>
+    </>
+);
+
+/** Commit & Push and Commit & Sync items of the commit options menu. */
+const CommitRemoteItems = ({ commitTitle, changes, hasRemote, handleCommit, handlePush, handleSync }: {
+    commitTitle: string;
+    changes: GitFileParams[];
+    hasRemote: boolean;
+    handleCommit: CommitNow;
+    handlePush: () => void;
+    handleSync: () => void;
+}) => {
+    const remoteItemDisabled = !commitTitle.trim() || changes.length === 0 || !hasRemote;
+    return (
+        <>
+            <DropdownMenuItem
+                disabled={remoteItemDisabled}
+                onClick={async () => {
+                    if (
+                        await handleCommit(false, {
+                            promptSyncAfter: false,
+                        })
+                    ) {
+                        await handlePush();
+                    }
+                }}
+            >
+                Commit & Push
+            </DropdownMenuItem>
+            <DropdownMenuItem
+                disabled={remoteItemDisabled}
+                onClick={async () => {
+                    if (
+                        await handleCommit(false, {
+                            promptSyncAfter: false,
+                        })
+                    ) {
+                        handleSync();
+                    }
+                }}
+            >
+                Commit & Sync
+            </DropdownMenuItem>
+        </>
     );
 };
 
@@ -1772,64 +2107,21 @@ const CommitOptionsMenu = ({
             </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem
-                disabled={!commitTitle.trim() || changes.length === 0}
-                onClick={() =>
-                    handleCommit(false, {
-                        promptSyncAfter: true,
-                    })
-                }
-            >
-                Commit
-            </DropdownMenuItem>
-            <DropdownMenuItem
-                disabled={!commitTitle.trim() || !lastCommit}
-                onClick={() =>
-                    handleCommit(false, {
-                        amend: true,
-                        promptSyncAfter: true,
-                    })
-                }
-            >
-                Commit (Amend)
-            </DropdownMenuItem>
+            <CommitStandardItems
+                commitTitle={commitTitle}
+                changes={changes}
+                lastCommit={lastCommit}
+                handleCommit={handleCommit}
+            />
             <DropdownMenuSeparator />
-            <DropdownMenuItem
-                disabled={
-                    !commitTitle.trim() ||
-                    changes.length === 0 ||
-                    !hasRemote
-                }
-                onClick={async () => {
-                    if (
-                        await handleCommit(false, {
-                            promptSyncAfter: false,
-                        })
-                    ) {
-                        await handlePush();
-                    }
-                }}
-            >
-                Commit & Push
-            </DropdownMenuItem>
-            <DropdownMenuItem
-                disabled={
-                    !commitTitle.trim() ||
-                    changes.length === 0 ||
-                    !hasRemote
-                }
-                onClick={async () => {
-                    if (
-                        await handleCommit(false, {
-                            promptSyncAfter: false,
-                        })
-                    ) {
-                        handleSync();
-                    }
-                }}
-            >
-                Commit & Sync
-            </DropdownMenuItem>
+            <CommitRemoteItems
+                commitTitle={commitTitle}
+                changes={changes}
+                hasRemote={hasRemote}
+                handleCommit={handleCommit}
+                handlePush={handlePush}
+                handleSync={handleSync}
+            />
         </DropdownMenuContent>
     </DropdownMenu>
 );
@@ -2415,6 +2707,24 @@ const SourceBody = ({
     </div>
 );
 
+/** Drop stale status when the project or repo changes; runs during render like the inline pattern it replaces. */
+const useResetStatusOnRepoChange = (repoKey: string, resetStatus: () => void) => {
+    const [statusKey, setStatusKey] = useState(repoKey);
+    if (statusKey !== repoKey) {
+        setStatusKey(repoKey);
+        resetStatus();
+    }
+};
+
+/** Full-width chrome slot above the source body; hidden while embedded in a repo pane. */
+const SourceChromeSlot = ({ embedded, isGitRepo, children }: {
+    embedded: boolean;
+    isGitRepo: boolean;
+    children: React.ReactNode;
+}) => (
+    <>{!(embedded && isGitRepo) ? children : null}</>
+);
+
 /** Source Control panel for one project: changes, branches, remotes, and commits. */
 const Source = ({
     className,
@@ -2459,16 +2769,14 @@ const Source = ({
     // Status belongs to one project + repo. When either changes, drop the old status during
     // render (React's "adjust state on prop change" pattern), so no frame shows the previous repo.
     const repoKey = `${project_path ?? ""}\n${scmRepoPath ?? ""}`;
-    const [statusKey, setStatusKey] = useState(repoKey);
-    if (statusKey !== repoKey) {
-        setStatusKey(repoKey);
+    useResetStatusOnRepoChange(repoKey, () => {
         setChanges([]);
         setCurrentBranch("...");
         setHasRemote(false);
         setLastCommit(null);
         setNeedsSync(false);
         setIsGitRepo(true);
-    }
+    });
     // Results of a refresh started for an earlier repo are dropped, not written over this one.
     const latestRepoKeyRef = useRef(repoKey);
     useEffect(() => {
@@ -2502,13 +2810,13 @@ const refresh = useGitStatusRefresh({
 
     useEffect(() => {
         /** Refresh on the window-level git-refresh event (staging, discard, repo switch). */
-        const handleGitRefresh = () => { refresh(); };
+        const handleGitRefresh = () => { void refresh(); };
         window.addEventListener("bettershape-git-refresh", handleGitRefresh);
         return () => window.removeEventListener("bettershape-git-refresh", handleGitRefresh);
     }, [refresh]);
 
     useEffect(() => {
-        if (!project_path || !hasRemote || !settings.git.autoFetch || !gitRepo) return;
+        if (!project_path || !hasRemote || !settings.git.autoFetch || !gitRepo) return undefined;
         const intervalMs = settings.git.autoFetchInterval * 1000;
         const id = setInterval(() => {
             commands.gitFetch(gitRepo).catch(() => undefined);
@@ -2590,7 +2898,7 @@ const refresh = useGitStatusRefresh({
     return (
         <div className={cn("w-full h-full flex flex-col select-none overflow-hidden font-sans", className)}>
             {/* Sidebar: chrome spans full width. Embedded + repo: chrome only over the left list, like Graph. */}
-            {!(embedded && isGitRepo) ? sourceChrome : null}
+            <SourceChromeSlot embedded={embedded} isGitRepo={isGitRepo}>{sourceChrome}</SourceChromeSlot>
 
             <SourceBody
                 reposLoading={reposLoading}

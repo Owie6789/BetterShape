@@ -250,10 +250,13 @@ export const buildShelfChildren = (
 
 /* -------------------------------------------------------------- row details */
 
+/** Whether a chat age is unusable: non-finite or negative. */
+const isInvalidDiffMs = (diffMs: number): boolean => !Number.isFinite(diffMs) || diffMs < 0;
+
 /** Same scale as the relative time on the chat welcome screen. */
 export const chatRelativeTime = (timestamp: number, now: number): string => {
     const diffMs = now - toTimestampMs(timestamp);
-    if (!Number.isFinite(diffMs) || diffMs < 0) return "—";
+    if (isInvalidDiffMs(diffMs)) return "—";
     const minutes = Math.floor(diffMs / 60_000);
     const hours = Math.floor(diffMs / 3_600_000);
     const days = Math.floor(diffMs / 86_400_000);
@@ -274,11 +277,14 @@ export const cardMeta = (path: string, collectionName: string | null): string =>
     return [folderName(path), collectionName].filter(Boolean).join(" · ");
 }
 
+/** Whether a subagent status or its board column marks completion. */
+const isDoneStatus = (status: string, column?: string): boolean => status === "done" || column === "done";
+
 /** Status dot colour class for a nested subagent row. */
 const nestedDot = (status: string, column?: string): string => {
     if (status === "error") return "bg-error";
     if (status === "cancelled") return "bg-text-muted";
-    if (status === "done" || column === "done") return "bg-success";
+    if (isDoneStatus(status, column)) return "bg-success";
     if (column === "review") return "bg-warning";
     return "bg-accent";
 }
@@ -428,6 +434,29 @@ const ChatRowSubagents = ({ id, color, subagents, onOpen }: {
     );
 };
 
+/** Colour submenu for the row context menu. */
+const ChatColourContextSubmenu = ({ color, chooseColor }: {
+    color: ChatColor | null;
+    chooseColor: (next: string) => void;
+}) => (
+    <ContextMenuSub>
+        <ContextMenuSubTrigger>
+            <Icon icon={Color20Regular} />
+            Colour
+        </ContextMenuSubTrigger>
+        <ContextMenuSubContent className="min-w-32">
+            <ContextMenuRadioGroup value={color ?? "none"} onValueChange={chooseColor}>
+                <ContextMenuRadioItem value="none">None</ContextMenuRadioItem>
+                {CHAT_COLORS.map((entry) => (
+                    <ContextMenuRadioItem key={entry} value={entry}>
+                        {entry.charAt(0).toUpperCase() + entry.slice(1)}
+                    </ContextMenuRadioItem>
+                ))}
+            </ContextMenuRadioGroup>
+        </ContextMenuSubContent>
+    </ContextMenuSub>
+);
+
 /** The row's right-click menu: lifecycle actions plus colour and collection entries. */
 const ChatRowContextMenu = ({ actions, color, chooseColor, addToCollection }: {
     actions: ReturnType<typeof buildChatLifecycleActions>;
@@ -445,23 +474,7 @@ const ChatRowContextMenu = ({ actions, color, chooseColor, addToCollection }: {
         <ContextMenuContent className="min-w-48">
             {renderLifecycleActions(actions, context)}
             <ContextMenuSeparator />
-            <ContextMenuSub>
-                <ContextMenuSubTrigger>
-                    <Icon icon={Color20Regular} />
-                    Colour
-                </ContextMenuSubTrigger>
-                <ContextMenuSubContent className="min-w-32">
-                    <ContextMenuRadioGroup value={color ?? "none"} onValueChange={chooseColor}>
-        <ContextMenuRadioItem value="none">None</ContextMenuRadioItem>
-        {CHAT_COLORS.map((entry) => (
-            <ContextMenuRadioItem key={entry} value={entry}>
-                {entry.charAt(0).toUpperCase() + entry.slice(1)}
-            </ContextMenuRadioItem>
-        ))}
-
-                    </ContextMenuRadioGroup>
-                </ContextMenuSubContent>
-            </ContextMenuSub>
+            <ChatColourContextSubmenu color={color} chooseColor={chooseColor} />
             <ContextMenuItem onClick={addToCollection}>
                 <Icon icon={Collections20Regular} />
                 Add to collection
@@ -469,6 +482,58 @@ const ChatRowContextMenu = ({ actions, color, chooseColor, addToCollection }: {
         </ContextMenuContent>
     );
 };
+
+/** Status dots at the row edge: generation spinner and unread marker. */
+const ChatRowStatusDots = ({ generating, unread }: { generating: boolean; unread: boolean }) => (
+    <span className="flex shrink-0 items-center gap-1">
+        {generating ? (
+            <Eclipse size={12} className="text-text-muted" aria-hidden />
+        ) : null}
+        {unread ? (
+            <span className="size-2 shrink-0 rounded-full bg-accent" aria-label="Unread" />
+        ) : null}
+    </span>
+);
+
+/** Unpin button shown on pinned rows. */
+const ChatRowUnpinButton = ({ pinned, onTogglePin }: {
+    pinned: boolean;
+    onTogglePin: (pinned: boolean) => void;
+}) => pinned ? (
+    <Tooltip content="Unpin" side="bottom">
+        <button
+            type="button"
+            aria-label="Unpin"
+            onClick={() => onTogglePin(false)}
+            className="flex size-6 items-center justify-center rounded-md text-text-primary"
+        >
+            <Icon icon={Pin20Filled} className="icon-sm" />
+        </button>
+    </Tooltip>
+) : null;
+
+/** Chevron toggle that expands or collapses the subagent list. */
+const ChatRowSubagentToggle = ({ nestedCount, expanded, setExpanded }: {
+    nestedCount: number;
+    expanded: boolean;
+    setExpanded: React.Dispatch<React.SetStateAction<boolean>>;
+}) => nestedCount > 0 ? (
+    <button
+        type="button"
+        aria-label={expanded ? "Hide agents" : "Show agents"}
+        aria-expanded={expanded}
+        onClick={() => setExpanded((open) => !open)}
+        className="flex size-5 shrink-0 items-center justify-center text-text-muted"
+    >
+        <Icon
+            icon={ChevronRight20Regular}
+            className={cn(
+                "icon-sm transition-transform duration-[var(--transition-fast)] ease-[var(--ease-out)]",
+                expanded && "rotate-90",
+            )}
+        />
+    </button>
+) : null;
 
 /** The row's trailing cluster: status dots, hover actions, unpin, and the subagent toggle. */
 const ChatRowTrailingActions = ({ generating, unread, pinned, nestedCount, expanded, color, actions, chooseColor, addToCollection, onTogglePin, setExpanded }: {
@@ -485,14 +550,7 @@ const ChatRowTrailingActions = ({ generating, unread, pinned, nestedCount, expan
     setExpanded: React.Dispatch<React.SetStateAction<boolean>>;
 }) => (
     <>
-        <span className="flex shrink-0 items-center gap-1">
-            {generating ? (
-                <Eclipse size={12} className="text-text-muted" aria-hidden />
-            ) : null}
-            {unread ? (
-                <span className="size-2 shrink-0 rounded-full bg-accent" aria-label="Unread" />
-            ) : null}
-        </span>
+        <ChatRowStatusDots generating={generating} unread={unread} />
         <span className="flex shrink-0 items-center">
             <span className="grid grid-cols-[0fr] overflow-hidden transition-[grid-template-columns] duration-150 ease-[var(--ease-out)] group-hover/chat:grid-cols-[1fr] group-has-[[data-state=open]]/chat:grid-cols-[1fr]">
             <span className="flex min-w-0 overflow-hidden">
@@ -506,36 +564,9 @@ const ChatRowTrailingActions = ({ generating, unread, pinned, nestedCount, expan
             />
             </span>
             </span>
-            {pinned ? (
-                <Tooltip content="Unpin" side="bottom">
-                    <button
-                        type="button"
-                        aria-label="Unpin"
-                        onClick={() => onTogglePin(false)}
-                        className="flex size-6 items-center justify-center rounded-md text-text-primary"
-                    >
-                        <Icon icon={Pin20Filled} className="icon-sm" />
-                    </button>
-                </Tooltip>
-            ) : null}
+            <ChatRowUnpinButton pinned={pinned} onTogglePin={onTogglePin} />
         </span>
-        {nestedCount > 0 ? (
-            <button
-                type="button"
-                aria-label={expanded ? "Hide agents" : "Show agents"}
-                aria-expanded={expanded}
-                onClick={() => setExpanded((open) => !open)}
-                className="flex size-5 shrink-0 items-center justify-center text-text-muted"
-            >
-                <Icon
-                    icon={ChevronRight20Regular}
-                    className={cn(
-                        "icon-sm transition-transform duration-[var(--transition-fast)] ease-[var(--ease-out)]",
-                        expanded && "rotate-90",
-                    )}
-                />
-            </button>
-        ) : null}
+        <ChatRowSubagentToggle nestedCount={nestedCount} expanded={expanded} setExpanded={setExpanded} />
     </>
 );
 
@@ -606,6 +637,10 @@ const ChatRowOpenButton = ({ title, variant, timestamp, meta, selecting, selecte
     );
 };
 
+/** Hover and active classes for an uncoloured row. */
+const uncolouredChromeClass = (color: ChatColor | null, active: boolean): string | false =>
+    !color && (active ? "bg-panel-hover text-text-primary" : "text-text-primary hover:bg-panel-hover");
+
 /** Row chrome classes: card height, uncoloured squircle/hover states, coloured hover wash. */
 const rowChromeClass = (variant: RowVariant, color: ChatColor | null, active: boolean): string =>
     cn(
@@ -613,7 +648,7 @@ const rowChromeClass = (variant: RowVariant, color: ChatColor | null, active: bo
         variant === "card" ? "h-[78px] py-2" : "h-10",
         !color && "squircle-2xl",
         "transition-colors duration-[var(--transition-fast)] ease-[var(--ease-out)]",
-        !color && (active ? "bg-panel-hover text-text-primary" : "text-text-primary hover:bg-panel-hover"),
+        uncolouredChromeClass(color, active),
         color && "text-text-primary hover:bg-[color-mix(in_oklch,var(--chat-tint)_12%,transparent)]",
     );
 
@@ -622,6 +657,18 @@ const outerTintClass = (color: ChatColor | null, active: boolean): string | null
     color && (active
         ? "bg-[color-mix(in_oklch,var(--chat-tint)_30%,transparent)] text-text-primary"
         : "bg-[color-mix(in_oklch,var(--chat-tint)_22%,transparent)] text-text-primary");
+
+/** Expansion state for a row's subagents; opens the first time subagents appear. */
+const useSubagentExpansion = (nestedCount: number) => {
+    const [expanded, setExpanded] = useState(false);
+    // Expand the row the first time its subagents appear. Tracked during render, not in an effect.
+    const [seenWorkers, setSeenWorkers] = useState(0);
+    if (seenWorkers !== nestedCount) {
+        setSeenWorkers(nestedCount);
+        if (seenWorkers === 0 && nestedCount > 0) setExpanded(true);
+    }
+    return { expanded, setExpanded };
+};
 
 /** One sidebar chat row: title, card meta, pin and colour menus, subagent expansion. */
 const ChatRow = ({
@@ -646,14 +693,8 @@ const ChatRow = ({
     const generating = useIsChatGenerating(id);
     const [renaming, setRenaming] = useState(false);
     const [draft, setDraft] = useState(title);
-    const [expanded, setExpanded] = useState(false);
     const nestedCount = subagents.length;
-    // Expand the row the first time its subagents appear. Tracked during render, not in an effect.
-    const [seenWorkers, setSeenWorkers] = useState(0);
-    if (seenWorkers !== nestedCount) {
-        setSeenWorkers(nestedCount);
-        if (seenWorkers === 0 && nestedCount > 0) setExpanded(true);
-    }
+    const { expanded, setExpanded } = useSubagentExpansion(nestedCount);
     const inputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
