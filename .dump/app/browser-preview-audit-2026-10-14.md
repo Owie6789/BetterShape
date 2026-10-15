@@ -491,3 +491,18 @@ JS-0833 alerts above. Both clear only through the dashboard:
 deactivate JS-D1001 (or set its documented skip classes) under
 Settings > Code Review, and enable `.deepsource.toml` under
 Settings > Preferences if the repo wants file-based config.
+
+
+Correction to the addendum above: the run on `16d96c1`
+(`69cad82e`) still lists the same five JS-0833 parse alerts, so
+`"type": "module"` did not move DeepSource either. Their parser
+evidently does not consult the package type or the `.mjs`
+extension when choosing sourceType for these files; the knob that
+controls it is the analyzer configuration the dashboard owns.
+The ESM conversion work stays on its own merits (three latent
+CommonJS assumptions were real and the suite passes on the
+declared module system), but it is not the fix for these alerts.
+Repo-side options are exhausted: branch TOML (two documented
+forms), package type, and per-file skipcq all show zero effect
+across six runs. The five alerts and the JS-D1001 bulk both clear
+only in Settings > Code Review / Settings > Preferences.
