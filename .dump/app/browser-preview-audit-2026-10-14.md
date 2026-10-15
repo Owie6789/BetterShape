@@ -683,3 +683,27 @@ Behaviour change: none; the line was restored, and tsc and ESLint pass.
 The Sonar duplication fix itself shares prop types (PanelSyncHandlers,
 MoreActionsHandlers, EmbeddedSourceBodyProps, SourceBodyProps) and
 spreads props into EmbeddedSourceBody instead of repeating the lists.
+
+## Mistake record: parallel same-file edits (2026-10-15, sixth wave)
+
+What happened: several `edit_file` calls targeting the same files
+(`lib/preview/tauri-mock.ts`, `scripts/qa/serve-static.cjs`,
+`scripts/qa/run-qa.cjs`) were issued in one parallel batch. The calls raced:
+some applied, some silently overwrote siblings, one left
+`lib/preview/tauri-mock.ts` with a dangling `deleteDescendants` reference and
+hundreds of TypeScript syntax errors, and `scripts/qa/run-qa.cjs` gained a
+duplicated helper block.
+
+Root cause: treating same-file edits as independent. They are read-modify-write
+cycles on shared state; parallel calls read the same starting bytes.
+
+Corrected understanding: edits to one file must be strictly sequential, and
+the file state after each edit must be verified with a targeted grep or a
+type/syntax check before the next edit lands.
+
+Behaviour change: batch replacements on one file now go through a single
+Python script with exact-count assertions (`count == 1` per replacement) or
+one `edit_file` call followed by verification. Recovery evidence: file
+restored with `git checkout HEAD -- lib/preview/tauri-mock.ts`, changes
+reapplied via the asserted replacement script, `npx tsc --noEmit` clean and
+`tests/preview/tauri-mock.test.ts` green afterwards.

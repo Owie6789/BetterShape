@@ -18,6 +18,25 @@ const { dirname, join } = require("node:path");
 // Spawning node directly avoids `npx` PATH lookup entirely.
 const playwrightCli = join(dirname(require.resolve("playwright/package.json")), "cli.js");
 
+/** Print one line on stdout; this script runs in Node, never a browser. */
+const log = (line = "") => process.stdout.write(`${line}\n`);
+
+/** Append a suite's failing spec titles to `failures`, prefixed by trail. */
+const collectSpecFailures = (suite, trail, failures) => {
+    for (const spec of suite.specs ?? []) {
+        if (!spec.ok) failures.push([...trail, spec.title].join(" › "));
+    }
+};
+
+/** Walk a suite tree collecting failing spec titles. */
+const walkSuites = (suite, trail, failures) => {
+    collectSpecFailures(suite, trail, failures);
+    for (const child of suite.suites ?? []) {
+        walkSuites(child, [...trail, child.title].filter(Boolean), failures);
+    }
+};
+
+
 const extraArgs = process.argv.slice(2);
 const run = spawnSync(process.execPath, [playwrightCli, "test", ...extraArgs], {
     stdio: "inherit",
@@ -28,31 +47,25 @@ if (existsSync(resultsPath)) {
     try {
         const report = JSON.parse(readFileSync(resultsPath, "utf8"));
         const stats = report.stats ?? {};
-        console.log("\n── QA summary ─────────────────────────────────────────");
-        console.log(
+        log("\n── QA summary ─────────────────────────────────────────");
+        log(
             `tests: ${stats.expected ?? 0} passed, ${stats.unexpected ?? 0} failed, ` +
             `${stats.flaky ?? 0} flaky, ${stats.skipped ?? 0} skipped ` +
             `(${(Number(stats.duration ?? 0) / 1000).toFixed(1)}s)`,
         );
         const failures = [];
-        const walk = (suite, trail = []) => {
-            for (const spec of suite.specs ?? []) {
-                if (!spec.ok) failures.push([...trail, spec.title].join(" › "));
-            }
-            for (const child of suite.suites ?? []) walk(child, [...trail, child.title].filter(Boolean));
-        };
-        for (const suite of report.suites ?? []) walk(suite);
+        for (const suite of report.suites ?? []) walkSuites(suite, [], failures);
         if (failures.length) {
-            console.log("failing:");
-            for (const f of failures) console.log(`  ✗ ${f}`);
+            log("failing:");
+            for (const f of failures) log(`  ✗ ${f}`);
         }
-        console.log("artifacts: playwright-report/index.html · test-results/ (traces, screenshots)");
-        console.log("─────────────────────────────────────────────────────────");
+        log("artifacts: playwright-report/index.html · test-results/ (traces, screenshots)");
+        log("─────────────────────────────────────────────────────────");
     } catch {
-        console.log("[qa] Could not parse test-results/results.json, see Playwright output above.");
+        log("[qa] Could not parse test-results/results.json, see Playwright output above.");
     }
 } else {
-    console.log("[qa] No JSON report produced, see Playwright output above.");
+    log("[qa] No JSON report produced, see Playwright output above.");
 }
 
 process.exit(run.status ?? 1);

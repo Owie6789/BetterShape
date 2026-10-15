@@ -23,4 +23,4 @@ for (const args of [[runtimeScript], [nextBin, "build"]]) {
     const result = spawnSync(process.execPath, args, { stdio: "inherit", env });
     if (result.status !== 0) process.exit(result.status ?? 1);
 }
-console.log("[build:preview] Static Browser Preview written to out/");
+process.stdout.write("[build:preview] Static Browser Preview written to out/\n");

@@ -1,4 +1,3 @@
-// skipcq: JS-0833
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
@@ -83,6 +82,21 @@ const eslintConfig = defineConfig([
     "coverage/**",
   ]),
   { rules: { "react-hooks/set-state-in-effect": "warn", "react-hooks/refs": "warn" } },
+  {
+    // Node tooling scripts; the Next.js config never defines the React hooks
+    // plugin for .cjs files, so its hook rules must be off there rather than
+    // warn, or ESLint fails the run on a missing plugin. This block must stay
+    // after the global rules blocks above or they re-enable the rules.
+    files: ["scripts/**/*.cjs"],
+    rules: {
+      "react-hooks/set-state-in-effect": "off",
+      "react-hooks/refs": "off",
+      "react-hooks/exhaustive-deps": "off",
+      "react-hooks/purity": "off",
+      "react-hooks/preserve-manual-memoization": "off",
+      "react-hooks/immutability": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

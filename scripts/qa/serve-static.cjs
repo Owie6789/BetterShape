@@ -18,7 +18,7 @@ const root = join(__dirname, "..", "..", "out");
 // Check existence before realpathSync: on a fresh checkout (no `out/` yet)
 // realpathSync throws ENOENT and hides the build instruction below.
 if (!existsSync(join(root, "index.html"))) {
-    console.error("[preview:browser] out/index.html not found. Run `npm run build:preview` first.");
+    process.stderr.write("[preview:browser] out/index.html not found. Run `npm run build:preview` first.\n");
     process.exit(1);
 }
 const realRoot = realpathSync(root);
@@ -43,41 +43,68 @@ const MIME = {
     ".map": "application/json; charset=utf-8",
 };
 
-function resolveFile(urlPath) {
-    let decoded;
+/** Decode a request path; malformed percent-encoding resolves to null. */
+const decodePath = (urlPath) => {
     try {
-        decoded = decodeURIComponent(urlPath);
+        return decodeURIComponent(urlPath);
     } catch {
         return null; // malformed percent-encoding, 400/404, never a crash
     }
-    if (decoded.includes("\0")) return null;
-    const clean = normalize(decoded).replace(/^(\.\.[/\\])+/, "");
-    const direct = join(root, clean);
-    // Hard containment: the resolved path must stay inside `out/`.
-    if (direct !== root && !direct.startsWith(root + sep)) return null;
-    const candidates = [direct, join(direct, "index.html")];
+};
+
+/** Whether a real path is the served root or sits below it. */
+const isInsideRoot = (real) => real === realRoot || real.startsWith(realRoot + sep);
+
+/** Whether a path currently resolves to a regular file. */
+const isFile = (path) => {
+    try {
+        return statSync(path).isFile();
+    } catch {
+        return false;
+    }
+};
+
+/** First candidate that resolves to a real file inside the served root. */
+const firstServedFile = (candidates) => {
     for (const candidate of candidates) {
         // Lexical containment is not enough: a symlink inside `out/` can
         // point outside it. Compare real paths before serving. realpath
         // also absorbs the stat race during a rebuild: a candidate that
         // vanished (or is not a file) is skipped, never thrown.
-        let real;
+        let real = "";
         try {
             real = realpathSync(candidate);
-            if (!statSync(real).isFile()) continue;
         } catch {
             continue;
         }
-        if (real === realRoot || real.startsWith(realRoot + sep)) return real;
+        if (isFile(real) && isInsideRoot(real)) return real;
     }
     return null;
-}
+};
+
+/** Resolve a request path to a real file below `out/`, or null. */
+const resolveFile = (urlPath) => {
+    const decoded = decodePath(urlPath);
+    if (decoded === null || decoded.includes("\0")) return null;
+    const clean = normalize(decoded).replace(/^(\.\.[/\\])+/, "");
+    const direct = join(root, clean);
+    // Hard containment: the resolved path must stay inside `out/`.
+    if (direct !== root && !direct.startsWith(root + sep)) return null;
+    return firstServedFile([direct, join(direct, "index.html")]);
+};
+
+/** Parse the request URL against its Host header; null when malformed. */
+const parseRequestUrl = (req) => {
+    try {
+        return new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+    } catch {
+        return null;
+    }
+};
 
 createServer((req, res) => {
-    let url;
-    try {
-        url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
-    } catch {
+    const url = parseRequestUrl(req);
+    if (url === null) {
         res.writeHead(400, { "content-type": "text/plain" });
         res.end("Bad request\n");
         return;
@@ -98,5 +125,5 @@ createServer((req, res) => {
     stream.on("error", () => res.destroy());
     stream.pipe(res);
 }).listen(port, host, () => {
-    console.log(`[preview:browser] Serving out/ at http://${host}:${port}`);
+    process.stdout.write(`[preview:browser] Serving out/ at http://${host}:${port}\n`);
 });

@@ -193,6 +193,12 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         ) as typeof PREVIEW_DIRS,
         branch: "main",
         branches: ["main", "preview/browser-qa"],
+        // Seeded working tree; stage/unstage/commit handlers mutate it so
+        // the Git manager reflects actions taken in the preview.
+        gitChanges: [
+            { path: "src/App.tsx", status: "M", staged: false },
+            { path: "README.md", status: "M", staged: true },
+        ] as Array<{ path: string; status: string; staged: boolean }>,
         logStreamOffsets: new Map<string, number>(),
     };
     const listeners = new Map<string, Set<number>>();
@@ -242,12 +248,13 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         return lastSlash >= 0 ? path.slice(0, lastSlash) || "/" : "/";
     };
 
-    /** Delete every entry below `path/` from a fake-tree map. */
-    const deleteDescendants = <T,>(tree: Record<string, T>, path: string) => {
-        for (const key of Object.keys(tree)) {
-            if (key.startsWith(`${path}/`)) delete tree[key];
-        }
-    };
+    /** Copy of a fake-tree map without one key. */
+    const withoutKey = <T,>(tree: Record<string, T>, key: string): Record<string, T> =>
+        Object.fromEntries(Object.entries(tree).filter(([k]) => k !== key));
+
+    /** Copy of a fake-tree map without the entries below `path/`. */
+    const withoutDescendants = <T,>(tree: Record<string, T>, path: string): Record<string, T> =>
+        Object.fromEntries(Object.entries(tree).filter(([k]) => !k.startsWith(`${path}/`)));
 
     /** Remove a path's entry from its parent directory listing. */
     const removeDirEntry = (path: string) => {
@@ -279,10 +286,8 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
 
     /** Remove a path (and its contents, for directories) from the fake tree. */
     const removeTree = (path: string) => {
-        delete state.files[path];
-        delete state.dirs[path];
-        deleteDescendants(state.files, path);
-        deleteDescendants(state.dirs, path);
+        state.files = withoutDescendants(withoutKey(state.files, path), path);
+        state.dirs = withoutDescendants(withoutKey(state.dirs, path), path);
         removeDirEntry(path);
     };
 
@@ -502,10 +507,37 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         git_resolve_repo_for_file: () => PREVIEW_PROJECT_PATH,
         // Status codes match the Rust backend (single letters, e.g.
         // "M"/"A"/"C"); the Git UI keys colors and glyphs off them.
-        git_status: () => [
-            { path: "src/App.tsx", status: "M", staged: false },
-            { path: "README.md", status: "M", staged: true },
-        ],
+        git_status: () => state.gitChanges.map((c) => ({ ...c })),
+        git_stage: (args) => {
+            const change = state.gitChanges.find((c) => c.path === String(args.filePath ?? ""));
+            if (change) change.staged = true;
+            return null;
+        },
+        git_unstage: (args) => {
+            const change = state.gitChanges.find((c) => c.path === String(args.filePath ?? ""));
+            if (change) change.staged = false;
+            return null;
+        },
+        git_stage_all: () => {
+            for (const change of state.gitChanges) change.staged = true;
+            return null;
+        },
+        git_unstage_all: () => {
+            for (const change of state.gitChanges) change.staged = false;
+            return null;
+        },
+        git_discard_changes: (args) => {
+            state.gitChanges = state.gitChanges.filter((c) => c.path !== String(args.filePath ?? ""));
+            return null;
+        },
+        git_commit: () => {
+            state.gitChanges = state.gitChanges.filter((c) => !c.staged);
+            return null;
+        },
+        git_commit_amend: () => {
+            state.gitChanges = state.gitChanges.filter((c) => !c.staged);
+            return null;
+        },
         git_branches: () => [...state.branches],
         git_current_branch: () => state.branch,
         git_create_branch: (args) => {

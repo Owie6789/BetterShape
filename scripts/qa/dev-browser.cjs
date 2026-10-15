@@ -25,7 +25,7 @@ const env = { ...process.env, NEXT_PUBLIC_BROWSER_PREVIEW: "1" };
 
 const runtime = spawnSync(process.execPath, [runtimeScript], { stdio: "inherit", env });
 if (runtime.status !== 0) {
-    console.error("[dev:browser] build:runtime failed, see output above.");
+    process.stderr.write("[dev:browser] build:runtime failed, see output above.\n");
     process.exit(runtime.status ?? 1);
 }
 

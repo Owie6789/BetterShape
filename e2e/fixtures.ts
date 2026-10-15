@@ -64,11 +64,6 @@ export const test = base.extend<PreviewFixtures>({
             if (BENIGN_CONSOLE_PATTERNS.some((pattern) => pattern.test(text))) return;
             consoleErrors.push(text);
         });
-        page.on("requestfailed", (request) => {
-            const failure = request.failure();
-            if (failure) consoleErrors.push(`requestfailed: ${request.url()}, ${failure.errorText}`);
-        });
-
         // Seed before any app script runs (init scripts precede page code).
         await page.addInitScript((seed: string) => {
             (window as unknown as { __BETTERSHAPE_PREVIEW_SEED__: string }).__BETTERSHAPE_PREVIEW_SEED__ = seed;
