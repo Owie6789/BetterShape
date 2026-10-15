@@ -214,6 +214,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         ) as typeof PREVIEW_DIRS,
         branch: "main",
         branches: ["main", "preview/browser-qa"],
+        logEntries: previewLogEntries(),
         // Seeded working tree; stage/unstage/commit handlers mutate it so
         // the Git manager reflects actions taken in the preview.
         gitChanges: [
@@ -403,11 +404,51 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         if (!copy) remapOpenTabs(oldPath, newPath);
     };
 
-    /** File body for diff panes: HEAD body for staged reads, worktree body otherwise. */
+    /** Drop staged changes and prepend a commit entry, like a real commit. */
+    const recordCommit = (message: string) => {
+        const stagedCount = state.gitChanges.filter((c) => c.staged).length;
+        state.gitChanges = state.gitChanges.filter((c) => !c.staged);
+        const [first, ...rest] = state.logEntries;
+        const parents = first ? [first.hash] : [];
+        const entry = {
+            hash: `preview${Date.now().toString(16)}0000000000000000000`.slice(0, 40),
+            message: message.trim() || "preview: commit",
+            author: "Preview Fixture",
+            author_email: "preview@example.invalid",
+            date: String(Math.floor(Date.now() / 1000)),
+            files_changed: stagedCount,
+            insertions: 0,
+            deletions: 0,
+            refs: [state.branch],
+            parent_count: parents.length,
+            parents,
+        };
+        state.logEntries = first ? [entry, { ...first, refs: [] }, ...rest] : [entry];
+    };
+
+    /** Rewrite the HEAD entry's message, like a real amend. */
+    const recordAmend = (message: string) => {
+        state.gitChanges = state.gitChanges.filter((c) => !c.staged);
+        const [first, ...rest] = state.logEntries;
+        if (!first) return;
+        state.logEntries = [{ ...first, message: message.trim() || first.message }, ...rest];
+    };
+
+    /** Body stored under a fake-tree key, or empty when absent. */
+    const bodyOf = (tree: Record<string, string>, key: string): string => tree[key] ?? "";
+
+    /** Whether the seeded change list holds `rel` as staged. */
+    const isStagedChange = (rel: string): boolean =>
+        state.gitChanges.some((c) => c.path === rel && c.staged);
+
+    /** File body for diff panes: HEAD body for staged reads, index body otherwise. */
     const itemContent = (args: Record<string, unknown>): string => {
-        const key = `${PREVIEW_PROJECT_PATH}/${String(args.filePath ?? "")}`;
-        const worktree = state.files[key] ?? "";
-        return args.staged ? (PREVIEW_HEAD_FILES[key] ?? worktree) : worktree;
+        const rel = String(args.filePath ?? "");
+        const key = `${PREVIEW_PROJECT_PATH}/${rel}`;
+        const worktree = bodyOf(state.files, key);
+        const head = PREVIEW_HEAD_FILES[key] ?? worktree;
+        if (args.staged) return head;
+        return isStagedChange(rel) ? worktree : head;
     };
 
     const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
@@ -558,12 +599,12 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
             state.gitChanges = state.gitChanges.filter((c) => c.path !== String(args.filePath ?? ""));
             return null;
         },
-        git_commit: () => {
-            state.gitChanges = state.gitChanges.filter((c) => !c.staged);
+        git_commit: (args) => {
+            recordCommit(String(args.message ?? ""));
             return null;
         },
-        git_commit_amend: () => {
-            state.gitChanges = state.gitChanges.filter((c) => !c.staged);
+        git_commit_amend: (args) => {
+            recordAmend(String(args.message ?? ""));
             return null;
         },
         git_branches: () => [...state.branches],
@@ -594,7 +635,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         git_has_remote: () => false,
         git_remote_url: () => null,
         git_sync_status: () => ({ ahead: 0, behind: 0 }),
-        git_log: () => previewLogEntries(),
+        git_log: () => state.logEntries.map((e) => ({ ...e, refs: [...e.refs] })),
         // Stateful paging: every page must advance, or the graph appends
         // duplicate commits with duplicate row keys.
         // The Rust backend keys streamers by callerId (STREAMERS map), so
@@ -605,7 +646,7 @@ export const createPreviewInvokeHandler = (seed: PreviewSeedMode) => {
         },
         git_log_stream_next: (args) => {
             const key = String(args.callerId ?? "");
-            const entries = previewLogEntries();
+            const entries = state.logEntries;
             const limit = typeof args.limit === "number" ? args.limit : entries.length;
             const offset = state.logStreamOffsets.get(key) ?? 0;
             const page = entries.slice(offset, offset + limit);

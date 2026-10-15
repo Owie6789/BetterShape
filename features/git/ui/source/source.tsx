@@ -697,7 +697,7 @@ const checkCommitPreconditions = async (
     amend: boolean,
 ): Promise<boolean> => {
     const { gitRepo, commitTitle, lastCommit, hasRemote } = ctx;
-    if (!gitRepo || !commitTitle) {
+    if (!gitRepo || !commitTitle.trim()) {
         notify.error("Git", "Please enter a commit title");
         return false;
     }
