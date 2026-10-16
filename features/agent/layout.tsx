@@ -34,18 +34,36 @@ const MAX_WORKSPACE_PX = 1200;
 const SPLASH_KEY = "bettershape-agent-splash-seen";
 const ZEN_KEY = "bettershape-zen-mode";
 
-function layoutMinWidth(sidebarOpen: boolean, workspaceOpen: boolean) {
+/**
+ * The narrowest the window may be with these columns open.
+ *
+ * Both floors are needed: the window has a minimum of its own, and the open columns can
+ * ask for more than it by themselves.
+ */
+const layoutMinWidth = (sidebarOpen: boolean, workspaceOpen: boolean) => {
     const sidebar = sidebarOpen ? SIDEBAR_EXPANDED : 0;
     const workspace = workspaceOpen ? MIN_WORKSPACE + WORKSPACE_GUTTER : 0;
     return Math.max(WINDOW_MIN_WIDTH, sidebar + MIN_CHAT + workspace);
-}
+};
 
-function isFlyoutUiTarget(target: EventTarget | null) {
+/**
+ * Whether a pointer event landed inside the flyout or on the toggle that summons it.
+ *
+ * Both markers count as inside, because the toggle sits outside the panel and a click on
+ * it must not be read as a click away from the flyout.
+ */
+const isFlyoutUiTarget = (target: EventTarget | null) => {
     if (!(target instanceof Element)) return false;
     return Boolean(target.closest("[data-sidebar-peek], [data-sidebar-peek-toggle]"));
-}
+};
 
-function SidebarPeek({
+/**
+ * The hover rail that stands in for the sidebar while it is closed.
+ *
+ * The list stays mounted once it has opened, because the hide path runs an exit delay and
+ * that needs the list already in the tree.
+ */
+const SidebarPeek = ({
     shown,
     onEnter,
     onLeave,
@@ -53,7 +71,7 @@ function SidebarPeek({
     shown: boolean;
     onEnter: () => void;
     onLeave: () => void;
-}) {
+}) => {
     // The list stays mounted for a moment after the flyout hides, so its exit can finish.
     // It is shown while `shown` is true, or until that delay ends.
     const [host, setHost] = useState<HTMLElement>();
@@ -65,8 +83,8 @@ function SidebarPeek({
 
     useEffect(() => {
         if (shown) return;
-        const t = window.setTimeout(() => setMounted(false), 200);
-        return () => window.clearTimeout(t);
+        const exitTimer = window.setTimeout(() => setMounted(false), 200);
+        return () => window.clearTimeout(exitTimer);
     }, [shown]);
 
     return (
@@ -103,13 +121,19 @@ function SidebarPeek({
             </div>
         </div>
     );
-}
+};
 
 /**
  * Agent View, left sidebar (agent / settings / git / files nav),
  * center chrome + content; expanded workspace is full-height; rail under chrome.
  */
-export function AgentLayout({ children }: { children: React.ReactNode }) {
+/**
+ * The agent surface: the sidebar, the chat column and the workspace panel around them.
+ *
+ * The three columns are measured here rather than left to CSS, because the window's own
+ * minimum, the workspace clamp and the chat's minimum all constrain each other.
+ */
+export const AgentLayout = ({ children }: { children: React.ReactNode }) => {
     const { project_path, active_file } = useProjectState();
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [workspaceOpen, setWorkspaceOpen] = useState(true);
@@ -128,10 +152,10 @@ export function AgentLayout({ children }: { children: React.ReactNode }) {
 
     useEffect(() => {
         try {
-            const w = Number(localStorage.getItem("bettershape-agent-workspace-width"));
-            if (w >= MIN_WORKSPACE && w <= MAX_WORKSPACE_PX) {
-                setWorkspaceWidth(w);
-                widthRef.current = w;
+            const stored = Number(localStorage.getItem("bettershape-agent-workspace-width"));
+            if (stored >= MIN_WORKSPACE && stored <= MAX_WORKSPACE_PX) {
+                setWorkspaceWidth(stored);
+                widthRef.current = stored;
             }
             setWorkspaceOpen(localStorage.getItem("bettershape-agent-workspace") !== "false");
             setSidebarOpen(localStorage.getItem("bettershape-agent-sidebar") !== "false");
@@ -160,6 +184,8 @@ export function AgentLayout({ children }: { children: React.ReactNode }) {
             setNavSlot(null);
             return;
         }
+        // The slot is filled by a portal that mounts after this effect, so the lookup is
+        // repeated by the interval below instead of resolved once here.
         const find = () => document.getElementById(AGENT_SIDEBAR_NAV_SLOT);
         setNavSlot(find());
         const id = window.setInterval(() => {
@@ -178,11 +204,11 @@ export function AgentLayout({ children }: { children: React.ReactNode }) {
 
     useEffect(() => {
         if (!splash) return;
-        let t2: number | undefined;
+        let seenTimer: number | undefined;
         const raf = requestAnimationFrame(() => setSplashVisible(true));
-        const t1 = window.setTimeout(() => {
+        const hideTimer = window.setTimeout(() => {
             setSplashVisible(false);
-            t2 = window.setTimeout(() => {
+            seenTimer = window.setTimeout(() => {
                 try {
                     sessionStorage.setItem(SPLASH_KEY, "1");
                 } catch {
@@ -193,8 +219,8 @@ export function AgentLayout({ children }: { children: React.ReactNode }) {
         }, 700);
         return () => {
             cancelAnimationFrame(raf);
-            if (t1 !== undefined) window.clearTimeout(t1);
-            if (t2 !== undefined) window.clearTimeout(t2);
+            if (hideTimer !== undefined) window.clearTimeout(hideTimer);
+            if (seenTimer !== undefined) window.clearTimeout(seenTimer);
         };
     }, [splash]);
 
@@ -234,14 +260,18 @@ export function AgentLayout({ children }: { children: React.ReactNode }) {
     }, [active_file, persistWorkspace]);
 
     useEffect(() => {
+        // The payload is narrowed here rather than in the caller: the same event carries
+        // view names this panel does not own, and only `editor` clears the overlay.
         const onView = (e: Event) => {
-            const v = (e as CustomEvent<string>).detail;
-            if (v === "editor") {
+            const view = (e as CustomEvent<string>).detail;
+            if (view === "editor") {
                 setOverlay(null);
                 persistWorkspace(true);
             }
-            if (v === "chat") setOverlay(null);
+            if (view === "chat") setOverlay(null);
         };
+        // Clears the overlay before persisting, so what is stored is the layout the diff
+        // is about to open into.
         const onFileDiff = () => {
             setOverlay(null);
             persistWorkspace(true);
@@ -292,6 +322,8 @@ export function AgentLayout({ children }: { children: React.ReactNode }) {
     }, [project_path]);
 
     useEffect(() => {
+        // A tab id can arrive with no project behind it, which is why the guard covers
+        // both, and the id is lower-cased because the menu sends its label as written.
         const onTab = (e: Event) => {
             const tabId = (e as CustomEvent<string>).detail?.toLowerCase();
             if (!tabId || !project_path) return;
@@ -305,6 +337,8 @@ export function AgentLayout({ children }: { children: React.ReactNode }) {
                 persistWorkspace(true);
             }
         };
+        // Two ids name this sidebar: the titlebar dispatches one and the keyboard
+        // shortcut the other, so both have to be accepted here.
         const onToggle = (e: Event) => {
             const detail = (e as CustomEvent<{ id?: string; value?: boolean }>).detail;
             const id = detail?.id;
@@ -330,6 +364,8 @@ export function AgentLayout({ children }: { children: React.ReactNode }) {
                 }, 80);
             }
         };
+        // A payload with no type is a close request, which is what a surface with nothing
+        // to restore sends when the user dismisses it.
         const onOverlay = (e: Event) => {
             const detail = (e as CustomEvent<AgentOverlay>).detail;
             if (!detail || !detail.type) {
@@ -355,6 +391,8 @@ export function AgentLayout({ children }: { children: React.ReactNode }) {
                 /* ignore */
             }
         };
+        // The active tab is set through the shared event and not local state: the tab
+        // strip belongs to the workspace shell, which is a different subtree.
         const onPrs = () => {
             setOverlay(null);
             persistWorkspace(true);
@@ -373,6 +411,8 @@ export function AgentLayout({ children }: { children: React.ReactNode }) {
     }, [project_path, persistWorkspace, toggleSidebar, toggleWorkspace]);
 
     useEffect(() => {
+        // The width is written through the ref: a drag produces a move per frame, and a
+        // state write here would re-render the whole layout on every one of them.
         const onMove = (e: MouseEvent) => {
             if (!dragging.current) return;
             const next = clampWorkspace(window.innerWidth - e.clientX);
@@ -380,6 +420,8 @@ export function AgentLayout({ children }: { children: React.ReactNode }) {
             widthRef.current = next;
             setWorkspaceWidth(next);
         };
+        // Ends the drag wherever the pointer is, and releases the body flags the start of
+        // the drag set.
         const onUp = () => {
             if (!dragging.current) return;
             dragging.current = false;
@@ -401,6 +443,8 @@ export function AgentLayout({ children }: { children: React.ReactNode }) {
     }, [clampWorkspace]);
 
     useEffect(() => {
+        // Re-fits the panel after the window changes size, and records whether any width
+        // is left for it at all.
         const apply = () => {
             const next = clampWorkspace(widthRef.current);
             setWorkspaceFits(next > 0);
@@ -454,6 +498,8 @@ export function AgentLayout({ children }: { children: React.ReactNode }) {
     }, [project_path, sidebarOpen, workspaceOpen]);
 
     useEffect(() => {
+        // Needs a project to open into; without one the event is dropped before the
+        // workspace is persisted, so the stored layout keeps matching the screen.
         const onOpenFiles = () => {
             if (!project_path) return;
             persistWorkspace(true);
@@ -478,7 +524,11 @@ export function AgentLayout({ children }: { children: React.ReactNode }) {
     }, []);
 
     useEffect(() => {
+        // Shared by the button and the two keyboard paths, so it holds no state of its own
+        // and can be dispatched from any of them.
         const onOpenTerminal = () => openWorkspaceTerminal();
+        // An empty action is the toggle case: the menu item that focuses the terminal
+        // sends no payload at all.
         const onShortcut = (e: Event) => {
             const detail = (e as CustomEvent<{ action?: string }>).detail;
             if (detail?.action === "open" || detail?.action === "toggle" || !detail?.action) {
@@ -515,6 +565,8 @@ export function AgentLayout({ children }: { children: React.ReactNode }) {
     }, [persistWorkspace]);
 
     useEffect(() => {
+        // The flag is written inside the updater, so the stored value and the rendered one
+        // cannot diverge, and a private-mode storage failure is swallowed.
         const onZen = () => {
             setZenMode((prev) => {
                 const next = !prev;
@@ -705,4 +757,4 @@ src="/logos/logo.png"
             )}
         </div>
     );
-}
+};

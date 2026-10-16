@@ -864,7 +864,7 @@ export function updateSettings(patch: Partial<BetterShapeSettings>): void {
  * so renaming the namespace would have left the stored payload behind for the next start
  * to load straight back over the reset.
  */
-export function resetSettings(): void {
+export const resetSettings = () => {
     // Bumped so a load already in flight cannot apply the payload this reset discarded.
     settingsGeneration += 1;
     if (typeof window !== "undefined") {
@@ -875,7 +875,7 @@ export function resetSettings(): void {
         }
     }
     updateSettings(DEFAULT_SETTINGS);
-}
+};
 
 /** `true` uses the system default. A saved device id is requested exactly. */
 export function microphoneConstraints(deviceId: string): MediaTrackConstraints | boolean {
