@@ -31,7 +31,7 @@ import { Star20Regular } from "@fluentui/react-icons/headless/svg/star";
 import { Target20Regular } from "@fluentui/react-icons/headless/svg/target";
 import { Trophy20Regular } from "@fluentui/react-icons/headless/svg/trophy";
 import { Wrench20Regular } from "@fluentui/react-icons/headless/svg/wrench";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon, type IconGlyph } from "@/components/ui/icon";
 import {
     AlertDialog,
@@ -163,7 +163,13 @@ const closeOnDismiss = (onClose: () => void) => (next: boolean) => {
     if (!next) onClose();
 };
 
-/** The first step: the name, which also takes Enter as the way forward. */
+/**
+ * The first step: the name, which also takes Enter as the way forward.
+ *
+ * Focus is claimed after mount rather than with the `autoFocus` prop: the prop does not
+ * fire in a dialog that mounts mid-render, and it can pull focus off a field the user was
+ * already in.
+ */
 const NameStep = ({
     name,
     onChange,
@@ -172,24 +178,33 @@ const NameStep = ({
     name: string;
     onChange: (value: string) => void;
     onEnter: () => void;
-}) => (
-    <input
-        autoFocus
-        value={name}
-        placeholder="Collection name"
-        onChange={(event) => onChange(event.target.value)}
-        onKeyDown={(event) => {
-            if (event.key === "Enter") onEnter();
-        }}
-        className="h-9 rounded-md bg-transparent px-2 text-sm text-text-primary outline-none ring-1 ring-border"
-    />
-);
+}) => {
+    const field = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        field.current?.focus();
+    }, []);
+
+    return (
+        <input
+            ref={field}
+            value={name}
+            placeholder="Collection name"
+            onChange={(event) => onChange(event.target.value)}
+            onKeyDown={(event) => {
+                if (event.key === "Enter") onEnter();
+            }}
+            className="h-9 rounded-md bg-transparent px-2 text-sm text-text-primary outline-none ring-1 ring-border"
+        />
+    );
+};
 
 /**
  * The second step: search, then the grid of icons.
  *
  * The pressed icon is marked with `aria-pressed` as well as the committed fill, because the
- * fill alone says nothing to a screen reader.
+ * fill alone says nothing to a screen reader. The search field takes focus the same way the
+ * name field does, which is what makes the second step typeable without reaching for it.
  */
 const IconStep = ({
     query,
@@ -205,13 +220,18 @@ const IconStep = ({
     onPick: (icon: CollectionIcon) => void;
 }) => {
     const icons = useMemo(() => findIcons(query), [query]);
+    const search = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        search.current?.focus();
+    }, []);
 
     return (
         <>
             <div className="flex items-center gap-2 rounded-md px-2 ring-1 ring-border">
                 <Icon icon={Search20Regular} className="icon-sm text-text-muted" />
                 <input
-                    autoFocus
+                    ref={search}
                     value={query}
                     placeholder="Search icons"
                     onChange={(event) => onQuery(event.target.value)}
