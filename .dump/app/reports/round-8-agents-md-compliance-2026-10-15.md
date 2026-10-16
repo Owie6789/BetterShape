@@ -483,7 +483,7 @@ to a source file in this pass.
 | `npm run lint` | PASS, 0 errors, 157 warnings, exit 0. Three warnings this branch introduced were cleared: two hook dependencies in the swap that the rule reads as refs, and two unused reads in the ladder probe |
 | `npx tsc --noEmit` | PASS, exit 0 |
 | `npm run test` | PASS, 121 files, 992 tests, exit 0, including `build:runtime` |
-| `npm run qa` | PASS, 25 tests, 0 failed, 0 flaky, 92.1s, exit 0 |
+| `npm run qa` | PASS, 25 tests, 0 failed, 0 flaky, 87.5s, exit 0 |
 | `npm run skills:verify` | PASS, 53 of 53 locked skills verified, 2 project-owned unrecorded |
 | `npm run test:rust` | NOT RUN, no Rust toolchain in the sandbox, and no Rust file in this diff |
 | `npm run qa:audit` | NOT RUN this batch |
@@ -721,6 +721,13 @@ tree, three were already fixed or stale, fifteen were real, and two needed a sec
 - Fixed in the Git lists: a run title clamps at two lines and the skeleton reserved one, so a
   wrapped title moved the list the moment data landed. The recipe now carries the line count
   and the reserve, and both sides read it.
+- Fixed in the QA scripts' shared bootstrap: eleven of them hardcoded `/tmp/sandboxlibs/lib`
+  for `LD_LIBRARY_PATH` while the run command in their own header told the reader to set
+  `PLAYWRIGHT_SANDBOX_LIBS`, so the variable did nothing. One helper reads it and falls back
+  to the path the notes use, and every script that launches Chromium calls it. Two scripts had
+  their own copy of the same block and one, `probe-rail.cjs`, had none at all, so it could not
+  launch without the caller exporting the path: that is how the gap surfaced, as a failure of
+  the probe rather than a finding about the app.
 - Fixed in the QA scripts, which is where nine of the twenty sat: the rail probe read only
   the X scale, so every vertical rail measured as flat; the ladder probe parsed `rgba()`
   strings as if they were hex alpha bytes and printed its verdicts without ever failing; the
