@@ -7,6 +7,7 @@ import {
     useSettings,
     updateSettingSection,
     updateSettings,
+    resetSettings,
     DEFAULT_SETTINGS,
     type BetterShapeSettings,
 } from "@/lib/settings";
@@ -1013,8 +1014,7 @@ export function SettingsView({
                             <Button
                                 size="sm"
                                 onClick={() => {
-                                    localStorage.removeItem("bettershape-settings-v1");
-                                    updateSettings(DEFAULT_SETTINGS);
+                                    resetSettings();
                                     setResetConfirmOpen(false);
                                 }}
                             >

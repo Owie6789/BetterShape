@@ -383,11 +383,12 @@ export const DEFAULT_SETTINGS: BetterShapeSettings = {
     },
 };
 
-// The value is the localStorage namespace these settings are stored under. It is public
-// by definition: the page reads it back with the same literal, and it is fixed forever
-// because changing it would orphan every stored install. DeepSource's SCT-A000 matches a
-// constant whose name ends in KEY, so the value is named here for what it is.
-// deepsource-disable-next-line SCT-A000
+// This is the localStorage namespace the settings live under, not a credential: the page
+// reads it back with this same literal, and it can never change, because a different value
+// would orphan the stored payload of every existing install. The analyzer's SCT-A000 flags
+// any constant named for a key, and `skipcq` is its documented way to answer one finding at
+// its own line instead of switching the rule off across the repository.
+// skipcq: SCT-A000
 const SETTINGS_STORAGE_NAMESPACE = "bettershape-settings-v1";
 
 /**
@@ -837,6 +838,24 @@ export function updateSettings(patch: Partial<BetterShapeSettings>): void {
     applyAppearanceSettings(currentSettings);
     void persistToTauriStore();
     emit();
+}
+
+/**
+ * Put every setting back to its default and drop the stored copy.
+ *
+ * The storage key belongs to this module. The settings screen used to repeat its literal,
+ * so renaming the namespace would have left the stored payload behind for the next start
+ * to load straight back over the reset.
+ */
+export function resetSettings(): void {
+    if (typeof window !== "undefined") {
+        try {
+            localStorage.removeItem(SETTINGS_STORAGE_NAMESPACE);
+        } catch {
+            /* a storage failure leaves the in-memory reset below untouched */
+        }
+    }
+    updateSettings(DEFAULT_SETTINGS);
 }
 
 /** `true` uses the system default. A saved device id is requested exactly. */
