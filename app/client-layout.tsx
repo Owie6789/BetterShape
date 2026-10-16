@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect } from "react";
+import type { FileInfo } from "@/lib/backend/types";
 import { usePathname } from "next/navigation";
 import Main from "@/components/layout/main";
 import { Titlebar } from "@/features/agent/workbench";
@@ -12,7 +13,6 @@ import { initSettings } from "@/lib/settings";
 import { initGitHubAuth } from "@/lib/github/store";
 import { CheckpointRestoreDialog } from "@/features/chat/ui/shell/checkpoint-restore-dialog";
 import { installBenignErrorFilters } from "@/lib/editor/benign-errors";
-import { isMainTauriWindow, isTauriRuntime } from "@/lib/window/tauri-window";
 import { FilterProvider } from "@/features/git/ui/manager/filter-context";
 import { SuppressNativeTooltips } from "@/components/ui/suppress-native-tooltips";
 import { CommandPaletteBridge } from "@/features/agent/palette";
@@ -103,6 +103,127 @@ const Content = ({ children }: { children: React.ReactNode }) => {
     );
 };
 
+/** What a close request should do once the unsaved work has been accounted for. */
+type CloseDecision = "allow" | "hide" | "continue";
+
+/**
+ * Starts an effect's async work and ends its promise here.
+ *
+ * An effect body cannot be async: React reads a returned promise as a cleanup function and
+ * the next teardown breaks. The work still has to own its rejection, so it ends in this one
+ * place instead of surfacing as an unhandled rejection on the window.
+ */
+function runEffectWork(work: () => Promise<void>): void {
+    work().catch(() => undefined);
+}
+
+/**
+ * Boots the parts of the app that are not tied to a route: settings, GitHub auth, the AI
+ * config sync and the MCP registry.
+ *
+ * Sequenced rather than fired in parallel, because each step writes the settings the next
+ * one reads, and the MCP sync is the only one allowed to fail: a malformed `mcp.json` must
+ * not take the window down with it.
+ */
+async function bootstrapApp(): Promise<void> {
+    await initSettings();
+    initGitHubAuth();
+    const { initAiConfigSync } = await import("@/lib/ai/sync");
+    initAiConfigSync();
+
+    // MCP: sync user mcp.json so the agent sees tools without visiting Settings.
+    try {
+        const { syncActiveMcpServers } = await import("@/lib/mcp/registry");
+        await syncActiveMcpServers();
+    } catch {
+        /* registry unavailable: the agent runs without MCP tools */
+    }
+}
+
+/**
+ * Reveals the main window once its settings are in.
+ *
+ * The window is created hidden and shown here, so the first frame the user sees is painted
+ * rather than empty. A window that is not the main one never came up hidden and is left as
+ * it is.
+ */
+async function revealMainWindow(): Promise<void> {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+
+    try {
+        const currentWindow = getCurrentWindow();
+        if (currentWindow.label !== "main") return;
+
+        const { initSettings } = await import("@/lib/settings");
+        await initSettings();
+        await currentWindow.show();
+    } catch (e) {
+        console.error("Failed to manage window flow:", e);
+    }
+}
+
+/**
+ * Marks the given files clean and drops their buffers.
+ *
+ * The buffers have to go with the close, otherwise the next open of the same path restores
+ * the dirty text the user just chose to discard.
+ */
+async function discardDirtyBuffers(files: FileInfo[]): Promise<void> {
+    const { clearDirtyBuffer } = await import("@/lib/workspace/dirty-buffers");
+    const { commands } = await import("@/lib/backend");
+    for (const file of files) {
+        clearDirtyBuffer(file.path);
+        await commands.markFileDirty(file.path, false);
+    }
+}
+
+/**
+ * The line the confirm dialog asks with: the file when one is unsaved, the count when more
+ * than one is, because a list of twenty paths fits in no dialog.
+ */
+function unsavedPrompt(files: FileInfo[]): string {
+    const [first] = files;
+    if (files.length === 1 && first) return `Save changes to ${first.name || first.path} before closing?`;
+    return `Save changes to ${files.length} files before closing?`;
+}
+
+/**
+ * Answers a close request.
+ *
+ * A generating chat hides the window rather than ending the run, an unsaved buffer asks
+ * first, and `allow` is the one answer that leaves the close event untouched, which is what
+ * lets the caller return before it calls `preventDefault`.
+ */
+async function resolveCloseRequest(): Promise<CloseDecision> {
+    const { hasGeneratingChats } = await import("@/features/chat/lib/generating-chats");
+    if (hasGeneratingChats()) return "hide";
+
+    const { getProjectSnapshot } = await import("@/lib/backend");
+    const dirty = getProjectSnapshot().open_files.filter((file) => file.is_dirty);
+    if (dirty.length === 0) return "allow";
+
+    const { confirm } = await import("@tauri-apps/plugin-dialog");
+    const save = await confirm(
+        unsavedPrompt(dirty),
+        {
+            title: "Unsaved changes",
+            kind: "warning",
+            okLabel: "Save",
+            cancelLabel: "Don't save",
+        },
+    );
+
+    if (!save) {
+        await discardDirtyBuffers(dirty);
+        return "continue";
+    }
+
+    window.dispatchEvent(new Event("save-all-request"));
+    // Give save-all a moment; then close.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    return "continue";
+}
+
 /**
  * Picks the window shell from the route and bootstraps the app once per window.
  *
@@ -119,26 +240,7 @@ const ClientLayout = ({ children }: { children: React.ReactNode }) => {
     const isPopout = pathMatches(pathname, "/popout");
 
     useEffect(() => {
-        const bootstrap = async () => {
-            void initSettings();
-            initGitHubAuth();
-            void import("@/lib/ai/sync").then(({ initAiConfigSync }) => initAiConfigSync());
-
-            // MCP: sync user mcp.json so the agent sees tools without visiting Settings.
-            void (async () => {
-                try {
-                    const { syncActiveMcpServers } = await import("@/lib/mcp/registry");
-                    await syncActiveMcpServers();
-                } catch {
-                    /* ignore */
-                }
-            })();
-
-            const isMain = !isTauriRuntime() || await isMainTauriWindow();
-            if (!isMain) return;
-        };
-
-        void bootstrap();
+        runEffectWork(bootstrapApp);
     }, []);
 
     // Re-ensure benign error filters (idempotent; instrumentation-client runs earlier).
@@ -147,58 +249,30 @@ const ClientLayout = ({ children }: { children: React.ReactNode }) => {
     }, []);
 
     useEffect(() => {
-        if (isSettings || isBranch || isPopout) return;
+        if (isSettings || isBranch || isPopout) return undefined;
         let unlisten: (() => void) | undefined;
         let cancelled = false;
 
-        void (async () => {
+        runEffectWork(async () => {
             try {
                 const { getCurrentWindow } = await import("@tauri-apps/api/window");
-                const { confirm } = await import("@tauri-apps/plugin-dialog");
                 const win = getCurrentWindow();
                 if (win.label !== "main") return;
 
                 unlisten = await win.onCloseRequested(async (event) => {
-                    const { hasGeneratingChats } = await import("@/features/chat/lib/generating-chats");
-                    if (hasGeneratingChats()) {
-                        event.preventDefault();
+                    const decision = await resolveCloseRequest();
+                    if (decision === "allow") return;
+                    event.preventDefault();
+                    if (decision === "hide") {
                         await win.hide();
                         return;
-                    }
-                    const { getProjectSnapshot, commands } = await import("@/lib/backend");
-                    const dirty = getProjectSnapshot().open_files.filter((f) => f.is_dirty);
-                    if (dirty.length === 0) return;
-
-                    event.preventDefault();
-                    const save = await confirm(
-                        dirty.length === 1
-                            ? `Save changes to ${dirty[0].name || dirty[0].path} before closing?`
-                            : `Save changes to ${dirty.length} files before closing?`,
-                        {
-                            title: "Unsaved changes",
-                            kind: "warning",
-                            okLabel: "Save",
-                            cancelLabel: "Don't save",
-                        },
-                    );
-
-                    if (save) {
-                        window.dispatchEvent(new Event("save-all-request"));
-                        // Give save-all a moment; then close.
-                        await new Promise((r) => setTimeout(r, 400));
-                    } else {
-                        const { clearDirtyBuffer } = await import("@/lib/workspace/dirty-buffers");
-                        for (const f of dirty) {
-                            clearDirtyBuffer(f.path);
-                            void commands.markFileDirty(f.path, false);
-                        }
                     }
                     if (!cancelled) await win.destroy();
                 });
             } catch {
                 /* browser / non-tauri */
             }
-        })();
+        });
 
         return () => {
             cancelled = true;
@@ -218,21 +292,7 @@ const ClientLayout = ({ children }: { children: React.ReactNode }) => {
     }, []);
 
     useEffect(() => {
-        const init = async () => {
-            const { getCurrentWindow } = await import("@tauri-apps/api/window");
-
-            try {
-                const currentWindow = getCurrentWindow();
-                if (currentWindow.label !== "main") return;
-
-                const { initSettings } = await import("@/lib/settings");
-                await initSettings();
-                await currentWindow.show();
-            } catch (e) {
-                console.error("Failed to manage window flow:", e);
-            }
-        };
-        void init();
+        runEffectWork(revealMainWindow);
     }, []);
 
     if (isPopout) return <PopoutShell>{children}</PopoutShell>;
