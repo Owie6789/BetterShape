@@ -418,6 +418,38 @@ function forStorage<T extends { ai: { providers: ProvidersSettings } }>(settings
     return secretsVaulted ? redactProviderSecrets(settings) : settings;
 }
 
+/**
+ * Live settings for the session. Declared above the functions that read it so
+ * every reference in this module follows the definition, which is also the
+ * order the reads run in: nothing below touches the value before this line
+ * executes.
+ */
+let currentSettings: BetterShapeSettings = {
+    ...DEFAULT_SETTINGS,
+    editor: { ...DEFAULT_SETTINGS.editor },
+    terminal: { ...DEFAULT_SETTINGS.terminal },
+    voice: { ...DEFAULT_SETTINGS.voice },
+    git: { ...DEFAULT_SETTINGS.git },
+    ai: { ...DEFAULT_SETTINGS.ai },
+    files: { ...DEFAULT_SETTINGS.files },
+    eslint: { ...DEFAULT_SETTINGS.eslint },
+    prettier: { ...DEFAULT_SETTINGS.prettier },
+    lsp: { ...DEFAULT_SETTINGS.lsp },
+    node: { ...DEFAULT_SETTINGS.node },
+    python: { ...DEFAULT_SETTINGS.python },
+    designAutocomplete: { ...DEFAULT_SETTINGS.designAutocomplete },
+    designDiagnostics: { ...DEFAULT_SETTINGS.designDiagnostics },
+    tailwindControls: { ...DEFAULT_SETTINGS.tailwindControls },
+    designBlame: { ...DEFAULT_SETTINGS.designBlame },
+    spacingRefactor: { ...DEFAULT_SETTINGS.spacingRefactor },
+    developer: { ...DEFAULT_SETTINGS.developer },
+    privacy: { ...DEFAULT_SETTINGS.privacy },
+    notifications: { ...DEFAULT_SETTINGS.notifications },
+    workspace: { ...DEFAULT_SETTINGS.workspace },
+    updates: { ...DEFAULT_SETTINGS.updates },
+    appearance: { ...DEFAULT_SETTINGS.appearance },
+};
+
 /** Secrets currently in memory, keyed by their keychain id. */
 export function providerSecretsForVault(): Record<string, string> {
     return providerSecrets(currentSettings.ai.providers);
@@ -487,31 +519,6 @@ export function applyVaultSecrets(secrets: Record<string, string>): void {
     emit();
 }
 
-let currentSettings: BetterShapeSettings = {
-    ...DEFAULT_SETTINGS,
-    editor: { ...DEFAULT_SETTINGS.editor },
-    terminal: { ...DEFAULT_SETTINGS.terminal },
-    voice: { ...DEFAULT_SETTINGS.voice },
-    git: { ...DEFAULT_SETTINGS.git },
-    ai: { ...DEFAULT_SETTINGS.ai },
-    files: { ...DEFAULT_SETTINGS.files },
-    eslint: { ...DEFAULT_SETTINGS.eslint },
-    prettier: { ...DEFAULT_SETTINGS.prettier },
-    lsp: { ...DEFAULT_SETTINGS.lsp },
-    node: { ...DEFAULT_SETTINGS.node },
-    python: { ...DEFAULT_SETTINGS.python },
-    designAutocomplete: { ...DEFAULT_SETTINGS.designAutocomplete },
-    designDiagnostics: { ...DEFAULT_SETTINGS.designDiagnostics },
-    tailwindControls: { ...DEFAULT_SETTINGS.tailwindControls },
-    designBlame: { ...DEFAULT_SETTINGS.designBlame },
-    spacingRefactor: { ...DEFAULT_SETTINGS.spacingRefactor },
-    developer: { ...DEFAULT_SETTINGS.developer },
-    privacy: { ...DEFAULT_SETTINGS.privacy },
-    notifications: { ...DEFAULT_SETTINGS.notifications },
-    workspace: { ...DEFAULT_SETTINGS.workspace },
-    updates: { ...DEFAULT_SETTINGS.updates },
-    appearance: { ...DEFAULT_SETTINGS.appearance },
-};
 /**
  * The snapshot React hydrates against.
  *

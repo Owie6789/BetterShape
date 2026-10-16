@@ -41,7 +41,7 @@ type Props = {
 /**
  * Floating command-palette / quick-pick dialog (Cursor/VS Code style).
  */
-export function QuickPick({
+export const QuickPick = ({
     open,
     onOpenChange,
     title,
@@ -52,7 +52,7 @@ export function QuickPick({
     onSelect,
     onSubmitQuery,
     emptyText = "No results",
-}: Props) {
+}: Props) => {
     const overlayRoot = useOverlayRoot();
     const [selected, setSelected] = React.useState(0);
     const inputRef = React.useRef<HTMLInputElement>(null);
@@ -69,11 +69,15 @@ export function QuickPick({
         setSelected(0);
     }, [query]);
 
+    // Wraps at both ends so a held arrow key cycles the list instead of parking on
+    // the last item; the empty list is a no-op because the modulo would be NaN.
     const move = (delta: number) => {
         if (items.length === 0) return;
         setSelected((i) => (i + delta + items.length) % items.length);
     };
 
+    // With no item at `index` the typed query is submitted when the caller handles
+    // it, which is what lets the palette act as a search box for an empty result.
     const confirm = (index = selected) => {
         const item = items[index];
         if (item) {
@@ -188,4 +192,4 @@ export function QuickPick({
             </Dialog.Portal>
         </Dialog.Root>
     );
-}
+};
