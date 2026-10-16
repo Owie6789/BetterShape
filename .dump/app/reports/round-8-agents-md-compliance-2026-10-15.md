@@ -594,6 +594,190 @@ finding is raised anyway. Adding the comment would mean writing the prose the ru
 and that rule 42 of `AGENTS.md` forbids, so the switch stays as written and the
 disagreement is recorded here.
 
+### The Secrets gate, identified
+
+An earlier draft of this report said the cause could not be read from outside. It could:
+the run page is public, and opening it names the finding.
+
+`SCT-A000`, "Audit: Hardcoded credential \"bettershape-settings-v1\" found in source code",
+at `lib/settings/store.ts`:
+
+    const STORAGE_KEY = "bettershape-settings-v1";
+
+That literal is a localStorage namespace. The page reads it back with the same string, and
+it is fixed forever, because changing it would orphan every stored install. The rule matches
+a constant whose name ends in KEY assigned a string literal, and thirty-three other files in
+this tree write the same shape. None of them is a credential.
+
+The line is byte-identical on the base commit, so this is a pre-existing false positive that
+became this pull request's finding when the hydration fix in `a0ef880` put that file in the
+diff: the Secrets analyzer reports on the files a pull request touches, which is also why
+the other thirty-three files stay quiet until someone edits one.
+
+Both halves of the fix are at the declaration: the constant is named
+`SETTINGS_STORAGE_NAMESPACE`, which is what it is, and the line carries
+`// deepsource-disable-next-line SCT-A000` with the reason beside it. The rule id came from
+the run page, which is the part that took three attempts to find.
+
+Every earlier claim in this report about DeepSource exposing no rule id was wrong in the same
+way: the run page lists rule ids, and the inline comments carry their own issue ids in a
+`<!-- DeepSource: id=... -->` marker. The status line and the pull request comments show
+none of it, which is what the earlier reading was based on.
+
+### The CodeAnt loop, first pass
+
+CodeAnt skips line review on this pull request (over a hundred files changed) and reviews on
+request, so its output here is the quality gate plus twenty nitpicks. Triaged against the
+tree, three were already fixed or stale, fifteen were real, and two needed a second look.
+
+- Stale: the technical-details disclosure does render the stack, `selectedClasses` already
+  steps up on hover, and `scripts/qa/classify-hover-rungs.py` is not in the tree any more.
+- Fixed in the terminal store: a tab counted as seen while the panel showing it was closed,
+  and a shell tab could never mark unread because only a run tab records a bound pty. The
+  store now takes the panel's visibility and project from the view that owns them, and
+  matches output to a tab through the live instance as well as the binding. The tests grew
+  from 8 to 12 cases, and the contract they pin changed, which is why two of them were
+  rewritten rather than kept.
+- Fixed in the copy hook: a second copy left the first reset timer armed, so the older timer
+  cleared the newer confirmation.
+- Fixed in the Git lists: a run title clamps at two lines and the skeleton reserved one, so a
+  wrapped title moved the list the moment data landed. The recipe now carries the line count
+  and the reserve, and both sides read it.
+- Fixed in the QA scripts, which is where nine of the twenty sat: the rail probe read only
+  the X scale, so every vertical rail measured as flat; the ladder probe parsed `rgba()`
+  strings as if they were hex alpha bytes and printed its verdicts without ever failing; the
+  motion token probe skipped a missing control and still printed PASS; the hover visibility
+  probe composited titlebar controls against the sidebar surface; the geometry probe promised
+  a transition state it never printed; the sheet builder labelled every frame with an empty
+  string; the compare script threw on the first velocity sample and claimed a bezier cannot
+  reach its endpoint at speed.
+- The GIF driver drew a cursor without moving the pointer. Only the sidebar ladder case moved
+  the real mouse, so the other four recordings showed a UI that never hovered. The pointer is
+  moved by the facade now, and the five GIFs were recorded again; the panel peek reads
+  `rail 0.50 (midpoint = 0.50)` with the pointer on the toggle, which is the value that was
+  missing before.
+
+Two of the fixes deserve their own note, because both were wrong the first time.
+
+The swap was the first: `transition: width` on a shrink-to-fit grid does nothing, and adding
+`interpolate-size: allow-keywords` does not fix it either. Measured in the browser, the box
+still snapped from 35px to 133px in one frame, because an `auto` to `auto` change is a layout
+change and not a property change, so there is nothing to interpolate. The component now pins
+the outgoing width as a length, measures the incoming layer (which is sized `max-content`, so
+its own box reports what it needs while the host is held narrow), hands that over, and
+releases back to `auto` when the swap ends. Driven in the same browser it travels through
+seven intermediate widths over 150ms.
+
+The second was mine, made and caught inside this pass: the `.t-swap__measure` rule looked
+dead to a grep that searched one file, so it was deleted, and the composer's own swap uses
+it. The rule is back, and the grep is a lesson about searching the tree rather than the file
+the rule lives in.
+
+### The sandbox was recycled mid branch### The sandbox was recycled mid branch
+
+Two things had to be rebuilt before any gate could run, and both are recorded because the
+evidence would otherwise look unbroken. The commit graph under `/home/user/app` was back at
+the session base while the working tree held every change, so the tree read as 46 deleted
+files and 23 modified ones against the remote. Nothing was lost: the index was repointed at
+the pushed head, which left exactly the 24 files this change touches. Then `node_modules`
+and the browser's runtime libraries were gone, and the image cannot install packages
+(`apt` cannot reach a mirror, and the NSS libraries are not on the box anywhere).
+
+The headless shell needs `libnspr4`, `libnss3` and `libnssutil3`. It never calls NSS on a
+local HTTP render, but it does link against it, and the leftover load failed twice: empty
+stubs satisfied the loader for unversioned references and then tripped an assertion inside
+`ld.so` for the versioned ones, because the binary asks for `PK11_FreeSlot@NSS_3.2` and the
+version nodes must exist to answer that. Generating the 44 NSS and NSPR symbols the binary
+references, grouped into the version nodes it asks for, produced a Chromium that reports
+`Chromium 153.0.8010.0`. The stub build lives outside the repository, at
+`/tmp/sandboxlibs`, and no file in this diff depends on it.
+
+## The pre-existing gates, fixed
+
+The instruction for this pass was to fix what the gates were already failing on and not
+only what this branch introduced, so the two classes are separated here.
+
+### The queue crawl failure
+
+`npm run qa` had failed on `/settings` since before this branch, at 24 passed and 1 failed.
+The failure was a hydration mismatch, and the route carried two of them stacked, which is
+why the first fix only moved the report to a second element.
+
+The first cause was in the settings store. `useSyncExternalStore` takes three arguments,
+and the third is the snapshot React hydrates against. The store passed the live settings
+there, which on the client already include everything persisted in local storage, while the
+server had rendered defaults. The provider button then carried a `title` the server render
+did not have. The store now hands over the defaults it started from, the same shape
+`lib/catalog/store.ts` documents for its own snapshot, and the persisted values arrive in
+the render straight after hydration.
+
+The second cause was in the native tooltip suppressor, and it is the more interesting one.
+That component swept every `title` in the document from an effect on mount. Effects flush
+per subtree while React hydrates, so the sweep rewrote attributes on controls React had not
+hydrated yet, and the mismatch surfaced against whichever control it reached first: a
+provider card, then a disabled button with a model hint. The sweep no longer runs on mount.
+A title is stripped when the pointer arrives on the control, when the control takes focus,
+and once across whatever is on screen when the pointer first moves. Those are the only
+moments a native bubble can appear, so nothing is lost, and the tree is left alone while
+React is still walking it. The rendered check confirms the strip still happens: 38 titles
+in the document before the first pointer movement and 0 after it, with 38 carried over to
+`data-native-title`.
+
+`npm run qa` is now 25 passed and 0 failed.
+
+### The analyzer findings
+
+DeepSource reports seventeen sites on the head that followed `9590e47`, all MINOR, and its
+check fails on a count rather than on severity. The check has no per-rule suppression: DeepSource's own documentation and its
+forum record that `exclude_patterns` and `test_patterns` are whole-analyzer switches and
+that the only other lever is an inline pragma, which needs a rule id this project's
+comments do not expose. Excluding the tree from analysis to silence a comment rule was
+rejected.
+
+That leaves judgement per site, and the findings separate into four kinds.
+
+- Two were doc-comment findings on files that predate this branch, `pathMatches` in
+  `app/client-layout.tsx` and `LoadingBar` in `components/ui/loading.tsx`. Both already
+  carried the constraint the rule wants documented, one duplicated at the call site and one
+  inside the body. Each moved to the declaration it describes. This satisfies the rule and
+  rule 42 of `AGENTS.md` at the same time, because the comment states a constraint rather
+  than restating the code.
+- One was a wildcard React import in `components/ui/collapse.tsx`, which is new in this
+  branch and used exactly one type from it. Fixed by naming the type.
+- One was the copy button reading its own state four times. One read now decides the face,
+  and the attribute, the spoken name and the tone follow it. The change is kept because it is
+  the honest shape for that component; the run that followed still counts the function at 7. The crash screen was the same
+  kind of finding at a larger scale: the report state machine and the report payload moved
+  into a `ReportBlock` with its own state and a `reportBody` builder, which leaves the
+  screen holding the mark, the heading, the two recovery buttons and one focus effect. The
+  run that followed reports no finding against `CrashScreen` itself. It does report
+  `ReportBlock` at complexity 9, the focus effect inside the screen at 6, `ClientLayout` at
+  7 and `CopyButton` at 7, all at "medium" risk. The analyzer's own reference puts its
+  default `cyclomatic_complexity_threshold` at "high", so a medium-risk count sits under
+  the configured line and is reported rather than enforced. Splitting `ReportBlock` further
+  to move that number would cut one component into four and trade a real file for a metric,
+  so the numbers are recorded here instead.
+- Two are `void promise`, and they are left alone on purpose. The operator appears 596
+  times across this codebase, it is how the repository marks a promise it means to discard,
+  and no lint rule here requires it. Changing two of those call sites would be a style
+  migration wearing a fix as a costume.
+- Ten are module-scope function declarations on React components, which is what a
+  component is in a file-based React app, and the analyzer is told the module system is
+  ESM in `.deepsource.toml`. Converting components to arrow consts to silence it would
+  churn every exported component in the tree. This class is recorded rather than fixed, and
+  the config file already carries a written reason for the same rule on doc comments, so
+  the next person to touch it has the precedent.
+
+### A doc-comment finding that its own switch should cover
+
+One finding survives that should not. `report`, an arrow function inside `ReportBlock`, is
+asked for a documentation comment. `.deepsource.toml` already names
+`arrow-function-expression` in `skip_doc_coverage`, which is one of the six values the
+analyzer's reference lists for JavaScript. The config is spelled as documented and the
+finding is raised anyway. Adding the comment would mean writing the prose the rule asks for
+and that rule 42 of `AGENTS.md` forbids, so the switch stays as written and the
+disagreement is recorded here.
+
 ### The Secrets gate fails, and the cause is outside this branch
 
 DeepSource Secrets passes on `428794d`, `43204f3`, `e0c4cd3` and `a57dce8`, and fails on
