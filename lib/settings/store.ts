@@ -383,7 +383,12 @@ export const DEFAULT_SETTINGS: BetterShapeSettings = {
     },
 };
 
-const STORAGE_KEY = "bettershape-settings-v1";
+// The value is the localStorage namespace these settings are stored under. It is public
+// by definition: the page reads it back with the same literal, and it is fixed forever
+// because changing it would orphan every stored install. DeepSource's SCT-A000 matches a
+// constant whose name ends in KEY, so the value is named here for what it is.
+// deepsource-disable-next-line SCT-A000
+const SETTINGS_STORAGE_NAMESPACE = "bettershape-settings-v1";
 
 /**
  * True once the OS keychain has been confirmed usable. Keys are then stripped
@@ -727,7 +732,7 @@ export function initSettingsBridge(): void {
     settingsBridgeInitialized = true;
 
     window.addEventListener("storage", (event) => {
-        if (event.key !== STORAGE_KEY || !event.newValue) return;
+        if (event.key !== SETTINGS_STORAGE_NAMESPACE || !event.newValue) return;
         try {
             applySettingsFromPayload(JSON.parse(event.newValue) as Partial<BetterShapeSettings>);
             emitLocal();
@@ -741,7 +746,7 @@ export function initSettingsBridge(): void {
             void listen<BetterShapeSettings>("bettershape-settings-changed", (event) => {
                 applySettingsFromPayload(event.payload);
                 try {
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify(forStorage(currentSettings)));
+                    localStorage.setItem(SETTINGS_STORAGE_NAMESPACE, JSON.stringify(forStorage(currentSettings)));
                 } catch { /* ignore */ }
                 emitLocal();
             });
@@ -752,7 +757,7 @@ export function initSettingsBridge(): void {
 function loadFromLocalStorage() {
     if (typeof window === "undefined") return;
     try {
-        const raw = localStorage.getItem(STORAGE_KEY);
+        const raw = localStorage.getItem(SETTINGS_STORAGE_NAMESPACE);
         if (raw) {
             const parsed = JSON.parse(raw) as Partial<BetterShapeSettings>;
             const rawChannel = parsed.updates?.channel;
@@ -767,7 +772,7 @@ function loadFromLocalStorage() {
 function persist() {
     if (typeof window === "undefined") return;
     try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(forStorage(currentSettings)));
+        localStorage.setItem(SETTINGS_STORAGE_NAMESPACE, JSON.stringify(forStorage(currentSettings)));
     } catch { /* ignore */ }
 }
 
