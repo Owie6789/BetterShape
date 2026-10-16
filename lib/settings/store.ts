@@ -398,6 +398,12 @@ const SETTINGS_STORAGE_NAMESPACE = "bettershape-settings-v1";
  */
 let secretsVaulted = false;
 
+/**
+ * Counts every wholesale replacement of the settings, so a read that started before one
+ * finished can tell that its payload is no longer wanted.
+ */
+let settingsGeneration = 0;
+
 /** Called by the BYOK bootstrap after probing the keychain. */
 export function setSecretsVaulted(vaulted: boolean): void {
     secretsVaulted = vaulted;
@@ -791,11 +797,15 @@ export async function initSettings(): Promise<void> {
     initSettingsBridge();
     if (hydrated) return;
     loadFromLocalStorage();
+    // The store file is read across two awaits. A reset can land inside that window, so the
+    // load records which generation it started in and refuses to apply a payload the user
+    // has already discarded.
+    const generationAtStart = settingsGeneration;
     try {
         const { load } = await import("@tauri-apps/plugin-store");
         const store = await load("settings.json", { autoSave: true, defaults: {} });
         const stored = await store.get<Partial<BetterShapeSettings>>("settings");
-        if (stored) {
+        if (stored && generationAtStart === settingsGeneration) {
             currentSettings = mergeSettings(DEFAULT_SETTINGS, stored, { preserveSecrets: true });
             persist();
             // Rewrite through the redaction path so a pre-keychain build's keys
@@ -848,6 +858,8 @@ export function updateSettings(patch: Partial<BetterShapeSettings>): void {
  * to load straight back over the reset.
  */
 export function resetSettings(): void {
+    // Bumped so a load already in flight cannot apply the payload this reset discarded.
+    settingsGeneration += 1;
     if (typeof window !== "undefined") {
         try {
             localStorage.removeItem(SETTINGS_STORAGE_NAMESPACE);
