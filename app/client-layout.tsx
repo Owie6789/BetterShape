@@ -113,9 +113,9 @@ type CloseDecision = "allow" | "hide" | "continue";
  * the next teardown breaks. The work still has to own its rejection, so it ends in this one
  * place instead of surfacing as an unhandled rejection on the window.
  */
-function runEffectWork(work: () => Promise<void>): void {
+const runEffectWork = (work: () => Promise<void>): void => {
     work().catch(() => undefined);
-}
+};
 
 /**
  * Boots the parts of the app that are not tied to a route: settings, GitHub auth, the AI
@@ -125,7 +125,7 @@ function runEffectWork(work: () => Promise<void>): void {
  * one reads, and the MCP sync is the only one allowed to fail: a malformed `mcp.json` must
  * not take the window down with it.
  */
-async function bootstrapApp(): Promise<void> {
+const bootstrapApp = async (): Promise<void> => {
     await initSettings();
     initGitHubAuth();
     const { initAiConfigSync } = await import("@/lib/ai/sync");
@@ -138,7 +138,7 @@ async function bootstrapApp(): Promise<void> {
     } catch {
         /* registry unavailable: the agent runs without MCP tools */
     }
-}
+};
 
 /**
  * Reveals the main window once its settings are in.
@@ -147,7 +147,7 @@ async function bootstrapApp(): Promise<void> {
  * rather than empty. A window that is not the main one never came up hidden and is left as
  * it is.
  */
-async function revealMainWindow(): Promise<void> {
+const revealMainWindow = async (): Promise<void> => {
     const { getCurrentWindow } = await import("@tauri-apps/api/window");
 
     try {
@@ -160,7 +160,7 @@ async function revealMainWindow(): Promise<void> {
     } catch (e) {
         console.error("Failed to manage window flow:", e);
     }
-}
+};
 
 /**
  * Marks the given files clean and drops their buffers.
@@ -168,24 +168,24 @@ async function revealMainWindow(): Promise<void> {
  * The buffers have to go with the close, otherwise the next open of the same path restores
  * the dirty text the user just chose to discard.
  */
-async function discardDirtyBuffers(files: FileInfo[]): Promise<void> {
+const discardDirtyBuffers = async (files: FileInfo[]): Promise<void> => {
     const { clearDirtyBuffer } = await import("@/lib/workspace/dirty-buffers");
     const { commands } = await import("@/lib/backend");
     for (const file of files) {
         clearDirtyBuffer(file.path);
         await commands.markFileDirty(file.path, false);
     }
-}
+};
 
 /**
  * The line the confirm dialog asks with: the file when one is unsaved, the count when more
  * than one is, because a list of twenty paths fits in no dialog.
  */
-function unsavedPrompt(files: FileInfo[]): string {
+const unsavedPrompt = (files: FileInfo[]): string => {
     const [first] = files;
     if (files.length === 1 && first) return `Save changes to ${first.name || first.path} before closing?`;
     return `Save changes to ${files.length} files before closing?`;
-}
+};
 
 /**
  * Answers a close request.
@@ -194,7 +194,7 @@ function unsavedPrompt(files: FileInfo[]): string {
  * first, and `allow` is the one answer that leaves the close event untouched, which is what
  * lets the caller return before it calls `preventDefault`.
  */
-async function resolveCloseRequest(): Promise<CloseDecision> {
+const resolveCloseRequest = async (): Promise<CloseDecision> => {
     const { hasGeneratingChats } = await import("@/features/chat/lib/generating-chats");
     if (hasGeneratingChats()) return "hide";
 
@@ -222,7 +222,7 @@ async function resolveCloseRequest(): Promise<CloseDecision> {
     // Give save-all a moment; then close.
     await new Promise((resolve) => setTimeout(resolve, 400));
     return "continue";
-}
+};
 
 /**
  * Picks the window shell from the route and bootstraps the app once per window.
@@ -284,8 +284,9 @@ const ClientLayout = ({ children }: { children: React.ReactNode }) => {
     // Must be bubble phase: Radix opens on the target first; capture+preventDefault
     // made Radix skip open (it ignores events that are already defaultPrevented).
     useEffect(() => {
-        const blockNative = (e: Event) => {
-            e.preventDefault();
+        /** Stops the WebView's own menu without touching the events Radix already handled. */
+        const blockNative = (event: Event) => {
+            event.preventDefault();
         };
         window.addEventListener("contextmenu", blockNative, false);
         return () => window.removeEventListener("contextmenu", blockNative, false);
@@ -300,16 +301,11 @@ const ClientLayout = ({ children }: { children: React.ReactNode }) => {
     if (isSettings) return <SettingsShell kind="Settings">{children}</SettingsShell>;
 
     return (
-        <LoadingProvider>
-            <NotificationProvider>
-                <SuppressNativeTooltips />
-                <GlobalContextMenu>
-                    <ChatStreamProvider>
-                        <Content>{children}</Content>
-                    </ChatStreamProvider>
-                </GlobalContextMenu>
-            </NotificationProvider>
-        </LoadingProvider>
+        <ProviderShell>
+            <ChatStreamProvider>
+                <Content>{children}</Content>
+            </ChatStreamProvider>
+        </ProviderShell>
     );
 };
 
