@@ -259,7 +259,7 @@ const VIDEO_EXTENSIONS = new Set([
 
 function getFileExtension(name: string): string {
     const parts = name.split('.');
-    return parts.length > 1 ? parts.pop()!.toLowerCase() : '';
+    return parts.length > 1 ? (parts.pop() ?? '').toLowerCase() : '';
 }
 
 function isCodeFile(file: File): boolean {

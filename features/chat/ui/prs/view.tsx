@@ -57,7 +57,8 @@ async function resolveOwnerRepo(projectPath: string | null) {
             remote.match(/github\.com[:/](.+?)\/(.+?)(?:\.git)?$/i) ||
             remote.match(/[:/]([^/]+)\/([^/]+?)(?:\.git)?$/);
         if (!m) return null;
-        return { owner: m[1]!, repo: m[2]!.replace(/\.git$/, "") };
+        const [, owner = "", slug = ""] = m;
+        return { owner, repo: slug.replace(/\.git$/, "") };
     } catch {
         return null;
     }
@@ -123,6 +124,7 @@ export function PullRequestsPanel({ pane = "full" }: { pane?: "list" | "detail" 
         () => items.find((item) => item.id === selectedId) ?? null,
         [items, selectedId],
     );
+    const selectedUrl = selected?.url;
 
     useEffect(() => {
         if (!selected || !repo) {
@@ -314,18 +316,18 @@ export function PullRequestsPanel({ pane = "full" }: { pane?: "list" | "detail" 
                                     Fix findings in a thread
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
-                                {selected.url ? (
+                                {selectedUrl ? (
                                     <DropdownMenuItem
-                                        onClick={() => void commands.openUrlExternal(selected.url!)}
+                                        onClick={() => void commands.openUrlExternal(selectedUrl)}
                                     >
                                         <Icon icon={Open20Regular} />
                                         Open on GitHub
                                     </DropdownMenuItem>
                                 ) : null}
-                                {selected.url ? (
+                                {selectedUrl ? (
                                     <DropdownMenuItem
                                         onClick={() => {
-                                            void navigator.clipboard.writeText(selected.url!);
+                                            void navigator.clipboard.writeText(selectedUrl);
                                             notify.success("Link copied");
                                         }}
                                     >
