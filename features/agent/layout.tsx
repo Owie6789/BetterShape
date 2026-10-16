@@ -267,6 +267,8 @@ const useExitDelay = (shown: boolean, delayMs: number) => {
 
     useEffect(() => {
         if (shown) return undefined;
+        // Cleared on the way out, so a layer that is re-opened quickly is never unmounted
+        // by the exit pass that the return below has just cancelled.
         const exitTimer = window.setTimeout(() => setMounted(false), delayMs);
         return () => window.clearTimeout(exitTimer);
     }, [shown, delayMs]);
@@ -507,7 +509,7 @@ const useStoredLayout = () => {
     const [workspaceOpen, setWorkspaceOpen] = useState(true);
     const [zenMode, setZenMode] = useState(false);
     const [splash, setSplash] = useState(false);
-    const [storedWidth, setStoredWidth] = useState<number | undefined>(undefined);
+    const [storedWidth, setStoredWidth] = useState<number | undefined>();
 
     useEffect(() => {
         setStoredWidth(readStoredWidth());
@@ -685,14 +687,19 @@ const useNavSlot = (overlay: AgentOverlay, sidebarOpen: boolean) => {
             setNavSlot(null);
             return undefined;
         }
+        // Read on every poll rather than cached: the portal that fills the slot mounts
+        // after this effect has already run once.
         const find = () => document.getElementById(AGENT_SIDEBAR_NAV_SLOT);
         setNavSlot(find());
+        // The slot is looked for on an interval because the portal mounts later, and the
+        // interval stops itself as soon as the element is there.
         const id = window.setInterval(() => {
             const el = find();
             if (!el) return;
             setNavSlot(el);
             window.clearInterval(id);
         }, NAV_SLOT_POLL_MS);
+        // A slot that never arrives must not leave a poll running for the session.
         const stop = window.setTimeout(() => window.clearInterval(id), NAV_SLOT_GIVE_UP_MS);
         return () => {
             window.clearInterval(id);
@@ -715,7 +722,11 @@ const useSplashSequence = (splash: boolean, setSplash: (next: boolean) => void) 
     useEffect(() => {
         if (!splash) return undefined;
         let seenTimer: number | undefined;
+        // The fade starts on the frame after the mark is painted, or the transition has no
+        // starting opacity to run from.
         const raf = requestAnimationFrame(() => setVisible(true));
+        // The hold, then the fade: the tab is only marked as seen once the fade has ended,
+        // so a reload mid-splash plays it again.
         const hideTimer = window.setTimeout(() => {
             setVisible(false);
             seenTimer = window.setTimeout(() => {
@@ -778,6 +789,15 @@ const setWorkspaceFromToggle = (value: boolean | undefined, actions: LayoutActio
     else actions.toggleWorkspace();
 };
 
+/** The two id families that close what a column shows rather than toggling the column. */
+const applyColumnControl = (id: string, actions: LayoutActions) => {
+    if (OVERLAY_TOGGLE_IDS.includes(id)) {
+        actions.closeOverlay();
+        return;
+    }
+    if (FILE_TOGGLE_IDS.includes(id)) actions.openFiles();
+};
+
 /**
  * Routes one layout toggle to the column it names.
  *
@@ -799,15 +819,6 @@ const applyLayoutToggle = (
         return;
     }
     applyColumnControl(id, actions);
-};
-
-/** The two id families that close what a column shows rather than toggling the column. */
-const applyColumnControl = (id: string, actions: LayoutActions) => {
-    if (OVERLAY_TOGGLE_IDS.includes(id)) {
-        actions.closeOverlay();
-        return;
-    }
-    if (FILE_TOGGLE_IDS.includes(id)) actions.openFiles();
 };
 
 /**
@@ -872,10 +883,14 @@ const useLayoutEvents = (
                 projectPath,
                 actions,
             );
+        // Read into primitives here so the router takes the id and the value rather than
+        // the payload, which is what keeps that router readable.
         const onToggle = (e: Event) => {
             const detail = (e as CustomEvent<{ id?: string; value?: boolean }>).detail;
             applyLayoutToggle(detail?.id, detail?.value, actions);
         };
+        // The overlay request is passed whole: the router is what decides between a
+        // dismissal, a tab and an overlay.
         const onOverlay = (e: Event) =>
             applyOverlayRequest((e as CustomEvent<AgentOverlay>).detail, overlayActions);
         window.addEventListener("bettershape-set-active-tab", onTab);
@@ -900,6 +915,8 @@ const useLayoutEvents = (
  */
 const useCenterViewEvents = (setOverlay: (overlay: AgentOverlay) => void, openWorkspace: () => void) => {
     useEffect(() => {
+        // The same event carries views this panel does not own, and only editor and chat
+        // mean anything to the overlay.
         const onView = (e: Event) => {
             const view = (e as CustomEvent<string>).detail;
             if (view === "editor" || view === "chat") {
@@ -944,6 +961,8 @@ const wantsTerminal = (action: string | undefined) =>
 /** Opens the workspace's terminal, from the button or from either keyboard path. */
 const useTerminalShortcutEvents = (openTerminal: () => void) => {
     useEffect(() => {
+        // The button and both keyboard paths arrive here, so the handler only reads the
+        // action and hands the decision to `wantsTerminal`.
         const onShortcut = (e: Event) => {
             if (wantsTerminal((e as CustomEvent<{ action?: string }>).detail?.action)) {
                 openTerminal();
