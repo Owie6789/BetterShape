@@ -180,7 +180,7 @@ jobs:
 
       - name: ESLint
         # Same errors-only gate as the Ubuntu `lint` job: the react-hooks rules are
-        # deliberately downgraded to warnings in eslint.config.mjs. This is a mirror,
+        # deliberately downgraded to warnings in eslint.config.js. This is a mirror,
         # not a relaxation.
         run: |
           set -o pipefail
