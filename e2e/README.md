@@ -19,7 +19,7 @@ This file is the operator/agent runbook.
 | Command | What it does |
 |---|---|
 | `npm run dev:browser` | Next dev server (port 48921) with mocks on. Open `http://localhost:48921`, add `?seed=project` for the fake open project. |
-| `npm run test:e2e` | Playwright suite; auto-starts `dev:browser`. First run on a new machine: `npx playwright install chromium`. |
+| `npm run test:e2e` | Playwright suite; auto-starts `dev:browser`. First run on a new machine: `npx playwright install chromium`. Where the browser CDN is blocked, use the vendored tree instead, see the sandbox section below. |
 | `npm run qa` | Full suite + a compact pass/fail summary for agents (`scripts/qa/run-qa.cjs`). Exit code = Playwright's. |
 | `npm run qa:audit` | Only the route crawl (`e2e/audit.spec.ts`): axe scan + screenshot + console/IPC inventory per route. |
 | `npm run test:e2e:ui` | Playwright UI mode for debugging selectors/flakes interactively. |
@@ -91,12 +91,69 @@ CI-generated baselines replace them; OS font rendering differs.
 
 ## Sandboxed / CI environments without browser downloads
 
-`playwright.config.ts` resolves Chromium in this order:
+Use the vendored tree first. The orphan branch `vendor/sandbox-toolchain`
+carries the Chrome for Testing build `playwright-core` pins, 156.0.8078.4,
+already laid out the way Playwright expects, with the shared-library closure
+it needs. Fetch the payload as `engineering/sandbox-vendored-toolchain.md`
+describes, reassemble the split assets (the browser tarball ships in three
+parts), and verify the manifest. That recipe prints the private root it
+created; export the printed path as `SV` in this shell, because the block
+refuses to guess a root and a fixed default would name a directory the recipe
+never created. The block then extracts the browser tree into a private
+directory of its own and runs the suite:
+
+The commands below run from the application checkout, so every payload step stays inside a
+subshell and the `npm` commands run where `package.json` is:
+
+```bash
+set -euo pipefail                     # a failed checksum stops the block here
+SV="${SV:?export SV to the payload root printed by the fetch recipe}"
+(
+  cd "$SV"
+  for f in $(grep -o '^[a-f0-9]\{64\}  .*\.part-00$' MANIFEST.sha256 | sed 's/.*  //; s/\.part-00$//'); do
+    cat "$f".part-* > "$f"
+  done
+  sha256sum -c MANIFEST.sha256
+)
+
+PB="$(mktemp -d)"                     # private tree: a fixed /tmp path can be pre-created as a symlink
+trap 'rm -rf "$PB"' EXIT              # removed on exit whether the suite passes or fails; drop this line to keep it
+tar xJf "$SV/browsers/browsers-playwright-1.64.1.tar.xz" -C "$PB"
+export PLAYWRIGHT_BROWSERS_PATH="$PB"
+export PLAYWRIGHT_SANDBOX_LIBS="$SV/chrome-deps/cft-156"
+PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci
+npm run test:e2e
+```
+
+`PLAYWRIGHT_SANDBOX_LIBS` points at the NSS/NSPR closure from the same
+payload and is applied to the browser launch only, so the dev server never
+inherits it. Keep it that way: an exported `LD_LIBRARY_PATH` over that
+directory reaches every child process, which is not the same thing. A browser
+launched directly, outside Playwright, needs `LD_LIBRARY_PATH` on that one
+command instead, because no config is involved.
+
+That path was verified against this suite: 6 of 6 smoke specs on Chrome for
+Testing 156.0.8078.4, with `PLAYWRIGHT_SANDBOX_LIBS` set and no exported
+`LD_LIBRARY_PATH`.
+
+When you hand in a browser instead, give `PLAYWRIGHT_CHROMIUM_PATH` the
+headless shell from the same tree,
+`chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell`.
+That is the binary Playwright's own layout resolves to in headless runs, and
+it passed the same 6 of 6 here. The full `chromium-1248/chrome-linux64/chrome`
+build starts and answers `--version` but exits mid-run on this host, so it is
+not the one to point the suite at.
+
+`playwright.config.ts` also resolves Chromium itself, in this order:
 `PLAYWRIGHT_CHROMIUM_PATH` → Playwright's downloaded browser →
-`@sparticuz/chromium` (npm-hosted build, for networks where the Playwright
-CDN is blocked). If the host lacks Chromium's system libraries
+`@sparticuz/chromium`, an npm-hosted build for networks where the Playwright
+CDN is blocked. If the host lacks Chromium's system libraries
 (libnss3/libnspr4), set `PLAYWRIGHT_SANDBOX_LIBS` to a directory containing
-them; it is prepended to `LD_LIBRARY_PATH` for the browser process only.
+them. It is prepended to `LD_LIBRARY_PATH` for the browser process on all
+three paths, so a browser handed in through `PLAYWRIGHT_CHROMIUM_PATH` needs
+it exactly as much as the npm fallback does. Registered npm hosts are not the
+only source: `engineering/sandbox-vendored-toolchain.md` records where the
+libraries come from, with hashes, for both the vendored and the npm build.
 
 ## CI
 

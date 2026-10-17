@@ -27,13 +27,42 @@ const useStatic = process.env.E2E_STATIC === "1";
 
 /**
  * Resolve a Chromium executable. Order:
- *   1. `PLAYWRIGHT_CHROMIUM_PATH`, explicit override (any environment).
+ *   1. `PLAYWRIGHT_CHROMIUM_PATH`, explicit override (any environment). When
+ *      the browser comes from the vendored tree, point this at
+ *      `chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell`:
+ *      the full Chrome build starts but exits mid-run in this sandbox.
  *   2. Playwright's own downloaded browser (`npx playwright install chromium`).
  *   3. `@sparticuz/chromium`, an npm-registry-hosted Chromium build, for
  *      sandboxes/CI images where the Playwright browser CDN is unreachable.
  *      Set `PLAYWRIGHT_SANDBOX_LIBS` to a directory of shared libraries
- *      (libnss3/libnspr4) to prepend to LD_LIBRARY_PATH if the host lacks them.
+ *      (libnss3/libnspr4) to prepend to LD_LIBRARY_PATH for the browser
+ *      process if the host lacks them. It applies to all three paths,
+ *      including `PLAYWRIGHT_CHROMIUM_PATH`, and never to this process's
+ *      own environment, so the dev server does not inherit it. Sources for
+ *      those libraries are in `engineering/sandbox-vendored-toolchain.md`.
+ *
+ * A network that blocks the CDN can still get the exact build via step 2: the
+ * orphan branch `vendor/sandbox-toolchain` carries Chrome for Testing
+ * 156.0.8078.4 in Playwright's own registry layout, so pointing
+ * `PLAYWRIGHT_BROWSERS_PATH` at the extracted tree needs no override at all.
+ * See `AGENTS.md` under Blocked sandbox toolchain.
  */
+/**
+ * Environment for browser children: a copy of this process's environment with
+ * the sandbox shared-lib dir (libnss3/libnspr4) prepended to LD_LIBRARY_PATH.
+ * A copy on purpose, so the dev server this config starts never inherits
+ * browser-only libraries. Without the variable set, it is a plain copy.
+ */
+const sandboxLibsEnv = (): NodeJS.ProcessEnv => {
+    const env: NodeJS.ProcessEnv = Object.assign({}, process.env);
+    const libs = process.env.PLAYWRIGHT_SANDBOX_LIBS;
+    const existing = process.env.LD_LIBRARY_PATH;
+    if (libs) {
+        env.LD_LIBRARY_PATH = existing ? `${libs}:${existing}` : libs;
+    }
+    return env;
+};
+
 const bundledChromiumUsable = (): boolean => {
     try {
         // playwright-core is a dependency of @playwright/test; use it only
@@ -45,19 +74,21 @@ const bundledChromiumUsable = (): boolean => {
         // Existence is not usability: a CDN-downloaded browser on a host
         // without libnss3/libnspr4 cannot start. Probe it the way the
         // sandboxChromium path resolves its binary, a child Node process.
-        execFileSync(executablePath, ["--version"], { stdio: "ignore", timeout: 15_000 });
+        // Give the probe the same environment the launch gets: on a host
+        // without NSS/NSPR, --version fails for the same reason a launch
+        // would, and the fallback would be skipped for the wrong reason.
+        // The timeout is generous on purpose: a slow first start is not an
+        // unusable browser, and a false negative sends a supported host down
+        // the @sparticuz path, which throws on Node below 22.17.
+        execFileSync(executablePath, ["--version"], {
+            stdio: "ignore",
+            timeout: 60_000,
+            env: sandboxLibsEnv(),
+        });
         return true;
     } catch {
         return false;
     }
-};
-
-/** Prepend the sandbox shared-lib dir (libnss3/libnspr4) when provided. */
-const applySandboxLibs = () => {
-    const libs = process.env.PLAYWRIGHT_SANDBOX_LIBS;
-    if (!libs) return;
-    const existing = process.env.LD_LIBRARY_PATH;
-    process.env.LD_LIBRARY_PATH = existing ? `${libs}:${existing}` : libs;
 };
 
 /** Whether this Node runtime satisfies @sparticuz/chromium's range (^22.17.0 || >=24.0.0). */
@@ -78,7 +109,8 @@ const sandboxChromium = (): { executablePath?: string; args?: string[] } => {
     if (!sparticuzNodeSupported()) {
         throw new Error(
             `Playwright's bundled Chromium is unavailable and the @sparticuz/chromium fallback requires Node ^22.17.0 || >=24.0.0 (current: ${process.versions.node}). ` +
-            "Install Node 22.17+ / 24+, run `npx playwright install chromium`, or set PLAYWRIGHT_CHROMIUM_PATH.",
+            "Install Node 22.17+ / 24+, run `npx playwright install chromium`, set PLAYWRIGHT_CHROMIUM_PATH, " +
+            "or stage the vendored browser tree from vendor/sandbox-toolchain (AGENTS.md, Blocked sandbox toolchain).",
         );
     }
     try {
@@ -95,7 +127,6 @@ const sandboxChromium = (): { executablePath?: string; args?: string[] } => {
             ],
             { encoding: "utf8", cwd: __dirname },
         ).trim();
-        applySandboxLibs();
         // Deliberately NOT sparticuz's full Lambda arg set: `--single-process`
         // makes the browser process unresponsive under a heavy dev bundle.
         // Playwright supplies sane defaults; add only sandbox essentials.
@@ -109,11 +140,21 @@ const sandboxChromium = (): { executablePath?: string; args?: string[] } => {
 };
 
 /** Pick the Chromium executable and args for this environment, honouring the explicit override first. */
-const resolveChromium = (): { executablePath?: string; args?: string[] } => {
+const resolveChromium = (): {
+    executablePath?: string;
+    args?: string[];
+    env?: NodeJS.ProcessEnv;
+} => {
+    // Every path below can land on a Chromium that needs NSS/NSPR the host
+    // does not have: the explicit override used to skip the prepend and the
+    // browser died with "error while loading shared libraries: libnspr4.so".
+    // The directory rides in `launchOptions.env` only, so it reaches the
+    // browser process and not the Next dev server started alongside it.
+    const env = sandboxLibsEnv();
     if (process.env.PLAYWRIGHT_CHROMIUM_PATH) {
-        return { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH };
+        return { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH, env };
     }
-    return bundledChromiumUsable() ? {} : sandboxChromium();
+    return { ...(bundledChromiumUsable() ? {} : sandboxChromium()), env };
 };
 
 const chromiumResolution = resolveChromium();

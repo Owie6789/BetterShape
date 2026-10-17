@@ -6,18 +6,39 @@ was produced by one of them, not by reading code and hoping.
 
 ## Verified green
 
+Re-measured in a restricted sandbox against the vendor branch on 2026-10-16. The two flags on the
+cargo rows are explained below the table.
+
 | Check | Command | Result |
 | --- | --- | --- |
-| Rust unit tests | `cargo test --all-features` | **313 passed, 0 failed** |
-| Rust formatting | `cargo fmt --all -- --check` | clean |
-| Rust lints | `cargo clippy --all-targets --all-features` | clean |
+| Rust unit tests | `CARGO_BUILD_JOBS=1 cargo test --ignore-rust-version --all-features --manifest-path src-tauri/Cargo.toml` | **313 passed, 0 failed** |
+| Rust formatting | `cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check` | clean |
+| Rust lints | `cargo clippy --ignore-rust-version --all-targets --all-features --manifest-path src-tauri/Cargo.toml -- -D warnings` | clean, 0 errors |
 | TypeScript | `npx tsc --noEmit` | clean |
-| ESLint | `npx eslint --quiet` | clean |
-| JS/TS tests | `npx vitest run` | 89 files, all passing |
+| ESLint | `npx eslint --quiet` | clean, 0 errors |
+| JS/TS tests | `npx vitest run` | 106 files, 864 tests, all passing |
+| Skill lock | `npm run skills:verify` | 53 of 53 locked skills verified |
+| Browser smoke specs | `PLAYWRIGHT_BROWSERS_PATH=<vendored> PLAYWRIGHT_SANDBOX_LIBS=<vendored closure> npx playwright test e2e/smoke.spec.ts` | 6 of 6 passed |
+| Browser suite, CI mode | `npm run build:preview && E2E_STATIC=1 npx playwright test --grep-invert @visual` (same env) | 22 passed |
 
-Rust is compiled and tested on CI only: the sandbox cannot reach `crates.io`, so
-`scripts/dev/rust-toolchain.sh` installs `rustc`/`cargo`/`rustfmt` from npm for
-local `cargo fmt` (see that script's header for what it can and cannot do).
+`--ignore-rust-version` is needed because `notify-rust@4.18.0` declares `rust-version = "1.89.0"`
+while `src-tauri/Cargo.toml` pins 1.88.0. `CARGO_BUILD_JOBS=1` keeps parallel test linking inside a
+small sandbox's memory. Run without the first flag, `cargo test` and `cargo clippy` exit 101 before
+compiling anything. The Rust rows in this table were measured on the first delivery (`7ec94c1b`)
+after the consumer-side repair recorded in section 7.1 of
+`engineering/sandbox-vendored-toolchain.md`. The current payload (`58094f1c`) was rebuilt usr-merged
+with no absolute or dangling library symlinks, and its producer re-ran A6 with all six gates green.
+A pin to the first delivery still needs that repair before any link step; the current one does not. Every Cargo row runs from the repository root and carries
+`--manifest-path src-tauri/Cargo.toml`, because the repository has no root manifest. The rows are
+the measured results with the flags spelled out; the plain commands exit 101 and are never reported
+as passing.
+
+Rust runs in the sandbox as well, against the vendor branch: the orphan branch
+`vendor/sandbox-toolchain` carries the 1.88.0 components, the crate registry and a Debian 12 dev
+sysroot for the GTK and WebKit stack, so `cargo fmt`, `cargo clippy` and `cargo test` all pass
+offline. `scripts/dev/rust-toolchain.sh` remains the npm-only path for `cargo fmt`. See
+`engineering/rust-toolchain.md` for the flags every Rust gate needs and
+`engineering/sandbox-vendored-toolchain.md` for the fetch recipe and the measured results.
 
 ## Fixed on this branch
 
@@ -101,10 +122,14 @@ npx tsc --noEmit
 npx eslint --quiet
 npx vitest run
 
-bash scripts/dev/rust-toolchain.sh          # rustc + cargo + rustfmt from npm
-. /tmp/rust-toolchain/env.sh
+# Rust. In a restricted sandbox prefix the cargo commands with the environment
+# from vendor/sandbox-toolchain and add the two flags: the vendored source
+# replacement in $CARGO_HOME/config.toml, and --ignore-rust-version because
+# notify-rust@4.18.0 declares rust-version 1.89.0 against the 1.88.0 pin.
+# See engineering/rust-toolchain.md.
 cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
-# cargo test / clippy need the crates.io index: run them on CI.
+cargo clippy --ignore-rust-version --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+CARGO_BUILD_JOBS=1 cargo test --ignore-rust-version --manifest-path src-tauri/Cargo.toml --all-features
 ```
 
 CI (`.github/workflows/ci.yml`) runs the full set: lint + typecheck, Vitest,
