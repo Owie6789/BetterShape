@@ -94,8 +94,11 @@ before it writes the include line, so `${__FILEDIR__}` is absolute here.
 
 ## Residual risks
 
-Three failure modes stay open. All three belong to the vendored plug-in or to
-NSIS rather than to this hook, and none of them is reachable from a hook.
+Three failure modes stay open. The hook reaches all three, because it runs
+`File`, `AnimGif::play` and `AnimGif::stop` itself. It cannot recover from any
+of them, because the behaviour lives in the vendored plug-in or in NSIS. A
+maintainer debugging an installer failure should read these as outcomes this
+hook can produce and cannot catch.
 
 - `AnimGif::stop` ends the animation worker with `TerminateThread`
   (plugin-animgif `winimage.cpp:236-240`) rather than a cooperative join, which
@@ -227,12 +230,11 @@ the pops and no branch reaches a label outside the function, that
 pops follow, and that both asset paths are anchored to `${__FILEDIR__}`.
 
 Compiling the installer needs Windows or Wine and makensis. `build-installers.yml`
-is written to do that on `windows-latest` for every pull request, against NSIS
-3.11, the version Tauri CLI 2.10.0 downloads. Only `ci.yml` and `release.yml`
-are on the default branch, and no Actions run started in this repository for
-the pull request that introduced this hook, so the compile evidence recorded in
-`.dump/app/audits/` is a local makensis build of the generated script rather
-than a CI artifact. When the Tauri CLI is upgraded, compare the new
+does that on `windows-latest` for every pull request, against NSIS 3.11, the
+version Tauri CLI 2.10.0 downloads. Actions was disabled in this repository
+while this hook was written, so the compile evidence in `.dump/app/audits/` is
+a local makensis build of the generated script. It has been re-enabled, and
+from here the pull request check runs are the authority. When the Tauri CLI is upgraded, compare the new
 `crates/tauri-bundler/src/bundle/windows/nsis/installer.nsi` with the version
 this hook targets. A change to the `installer_hooks` include point, to the
 welcome page declaration, or to the welcome page image control is what can

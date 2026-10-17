@@ -216,8 +216,11 @@ design drift". Everything below was answered on the follow-up commit.
 All eight changes were mutation-tested: dropping `InitPluginsDir`, dropping the
 guard, swapping the callback targets, commenting out `play`, inserting an early
 `Return`, naming a prefix-only target, pointing the guard at the wrong label,
-and reverting `readSubBlocks` to the unchecked loop. Each one fails at least one
-named test, and the last one takes the worker down.
+and reverting `readSubBlocks` to the unchecked loop. Seven of the eight failed at
+least one named test. The eighth failed nothing, which is the whole point of the
+finding: reverting `readSubBlocks` takes the vitest worker down, so the run
+reports `Worker exited unexpectedly` with `Tests (12)` and no failing test, plus
+vitest's own warning that the run may contain false positives.
 
 ### Rejected, with evidence
 
@@ -262,6 +265,33 @@ named test, and the last one takes the worker down.
   not run. No Actions run has started in this repository since
   `2026-10-14T22:20Z`, none for this branch, and `actions/permissions` returns
   403 with this token, so whether Actions is disabled or out of budget is a
-  human question. The README now describes the evidence that exists, a local
+  human question. Answered the same day: Actions had been disabled for the
+  repository and was re-enabled, so the workflows ran on the follow-up commit.
+  The lesson stands. A check run that never appears is not evidence that a gate
+  passed, and the difference between "no run" and "no failure" has to be
+  reported to a human rather than assumed away. The README now describes the evidence that exists, a local
   makensis build of the generated script, and the pull request body was
   corrected to match.
+
+## Review round 2
+
+Head `38ec6bc`. A human requested CodeRabbit, which AGENTS.md otherwise reserves
+for substantially critical pull requests, so the classification stayed `No` and
+the agent did not request it. CodeRabbit filed 2 inline comments, both minor,
+both about prose that overstated what the evidence showed. Both were valid and
+both were fixed.
+
+- The mutation summary claimed every mutation failed a named test. It did not.
+  Seven did, and the eighth killed the vitest worker with no failing test at
+  all, which is the exact behaviour the finding it answered was about. The same
+  overstatement had been copied into the pull request body and into the roll-up
+  comment, so all three were corrected.
+- The residual risks section said none of the three failure modes was reachable
+  from a hook. The hook runs `File`, `AnimGif::play` and `AnimGif::stop`, so all
+  three are reachable through it. What it cannot do is recover from them. The
+  distinction matters to whoever debugs an installer failure later.
+
+The pattern in both is the same, and it is worth naming: a sentence written to
+summarise evidence drifted further from that evidence than the evidence itself
+did. The claims were checked against the mutation output and the hook source
+before they were rewritten, not against the earlier draft.
