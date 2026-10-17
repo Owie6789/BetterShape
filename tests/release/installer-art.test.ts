@@ -12,86 +12,131 @@ type GifFrame = {
     transparent: boolean;
 };
 
+type GifCursor = {
+    buffer: Buffer;
+    offset: number;
+};
+
+function escapeRegExp(text: string) {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Every read is bounds-checked. A malformed asset has to fail the suite with a
+// message, not spin a worker until vitest gives up on it.
+function requireBytes(cursor: GifCursor, count: number, what: string) {
+    if (cursor.offset + count > cursor.buffer.length) {
+        throw new Error(
+            `truncated GIF: ${what} needs ${count} more bytes at offset ${cursor.offset}`,
+        );
+    }
+}
+
+function readSubBlocks(cursor: GifCursor) {
+    const chunks: Buffer[] = [];
+    for (;;) {
+        requireBytes(cursor, 1, "a sub-block terminator");
+        const size = cursor.buffer[cursor.offset];
+        if (size === 0) {
+            cursor.offset += 1;
+            return Buffer.concat(chunks);
+        }
+        requireBytes(cursor, 1 + size, `a ${size} byte sub-block`);
+        chunks.push(cursor.buffer.subarray(cursor.offset + 1, cursor.offset + 1 + size));
+        cursor.offset += size + 1;
+    }
+}
+
+function readGraphicControlExtension(cursor: GifCursor): GifFrame {
+    requireBytes(cursor, 6, "a graphic control extension");
+    expect(cursor.buffer[cursor.offset]).toBe(4);
+    const packed = cursor.buffer[cursor.offset + 1];
+    const frame = {
+        delay: cursor.buffer.readUInt16LE(cursor.offset + 2),
+        disposal: (packed >> 2) & 0x07,
+        transparent: (packed & 0x01) === 1,
+    };
+    cursor.offset += 6;
+    return frame;
+}
+
+function readApplicationExtension(cursor: GifCursor) {
+    requireBytes(cursor, 1, "an extension block size");
+    const size = cursor.buffer[cursor.offset];
+    requireBytes(cursor, 1 + size, "an extension identifier");
+    const identifier = cursor.buffer
+        .subarray(cursor.offset + 1, cursor.offset + 1 + size)
+        .toString("ascii");
+    cursor.offset += size + 1;
+    const data = readSubBlocks(cursor);
+    if (identifier !== "NETSCAPE2.0" || data[0] !== 1) {
+        return null;
+    }
+    if (data.length < 3) {
+        throw new Error("truncated GIF: the NETSCAPE2.0 loop count is incomplete");
+    }
+    return data.readUInt16LE(1);
+}
+
+function readImageDescriptor(cursor: GifCursor) {
+    requireBytes(cursor, 9, "an image descriptor");
+    expect({
+        left: cursor.buffer.readUInt16LE(cursor.offset),
+        top: cursor.buffer.readUInt16LE(cursor.offset + 2),
+        width: cursor.buffer.readUInt16LE(cursor.offset + 4),
+        height: cursor.buffer.readUInt16LE(cursor.offset + 6),
+    }).toEqual({ left: 0, top: 0, width: 164, height: 314 });
+
+    const packed = cursor.buffer[cursor.offset + 8];
+    const localTable = (packed & 0x80) !== 0;
+    const interlaced = (packed & 0x40) !== 0;
+    expect(interlaced).toBe(false);
+    cursor.offset += 9;
+    if (localTable) {
+        const bytes = 3 * (1 << ((packed & 0x07) + 1));
+        requireBytes(cursor, bytes, "a local colour table");
+        cursor.offset += bytes;
+    }
+    requireBytes(cursor, 1, "an LZW minimum code size");
+    cursor.offset += 1;
+    readSubBlocks(cursor);
+}
+
 function parseGif(buffer: Buffer) {
     const signature = buffer.subarray(0, 6).toString("ascii");
     const width = buffer.readUInt16LE(6);
     const height = buffer.readUInt16LE(8);
     const packed = buffer[10];
-    let offset = 13;
+    const cursor: GifCursor = { buffer, offset: 13 };
     if (packed & 0x80) {
-        offset += 3 * (1 << ((packed & 0x07) + 1));
+        cursor.offset += 3 * (1 << ((packed & 0x07) + 1));
     }
 
     const frames: GifFrame[] = [];
     let loop: number | null = null;
-    let pendingDelay = 0;
-    let pendingDisposal = 0;
-    let pendingTransparent = false;
+    let pending: GifFrame = { delay: 0, disposal: 0, transparent: false };
 
-    const readSubBlocks = () => {
-        const chunks: Buffer[] = [];
-        while (buffer[offset] !== 0) {
-            const size = buffer[offset];
-            chunks.push(buffer.subarray(offset + 1, offset + 1 + size));
-            offset += size + 1;
-        }
-        offset += 1;
-        return Buffer.concat(chunks);
-    };
-
-    while (offset < buffer.length) {
-        const block = buffer[offset];
-        offset += 1;
+    while (cursor.offset < buffer.length) {
+        requireBytes(cursor, 1, "a block introducer");
+        const block = buffer[cursor.offset];
+        cursor.offset += 1;
 
         if (block === 0x21) {
-            const label = buffer[offset];
-            offset += 1;
-
+            requireBytes(cursor, 1, "an extension label");
+            const label = buffer[cursor.offset];
+            cursor.offset += 1;
             if (label === 0xf9) {
-                const size = buffer[offset];
-                expect(size).toBe(4);
-                pendingDisposal = (buffer[offset + 1] >> 2) & 0x07;
-                pendingDelay = buffer.readUInt16LE(offset + 2);
-                pendingTransparent = (buffer[offset + 1] & 0x01) === 1;
-                offset += 6;
+                pending = readGraphicControlExtension(cursor);
             } else if (label === 0xff) {
-                const size = buffer[offset];
-                const identifier = buffer
-                    .subarray(offset + 1, offset + 1 + size)
-                    .toString("ascii");
-                offset += size + 1;
-                const data = readSubBlocks();
-                if (identifier === "NETSCAPE2.0" && data[0] === 1) {
-                    loop = data.readUInt16LE(1);
-                }
+                loop = readApplicationExtension(cursor) ?? loop;
             } else {
-                readSubBlocks();
+                readSubBlocks(cursor);
             }
             continue;
         }
 
         if (block === 0x2c) {
-            expect({
-                left: buffer.readUInt16LE(offset),
-                top: buffer.readUInt16LE(offset + 2),
-                width: buffer.readUInt16LE(offset + 4),
-                height: buffer.readUInt16LE(offset + 6),
-            }).toEqual({ left: 0, top: 0, width: 164, height: 314 });
-            const framePacked = buffer[offset + 8];
-            const localTable = (framePacked & 0x80) !== 0;
-            const interlaced = (framePacked & 0x40) !== 0;
-            expect(interlaced).toBe(false);
-            offset += 9;
-            if (localTable) {
-                offset += 3 * (1 << ((framePacked & 0x07) + 1));
-            }
-            offset += 1; // LZW minimum code size
-            readSubBlocks();
-            frames.push({
-                delay: pendingDelay,
-                disposal: pendingDisposal,
-                transparent: pendingTransparent,
-            });
+            readImageDescriptor(cursor);
+            frames.push(pending);
             continue;
         }
 
@@ -99,7 +144,7 @@ function parseGif(buffer: Buffer) {
             break;
         }
 
-        throw new Error(`unexpected GIF block 0x${block.toString(16)} at ${offset - 1}`);
+        throw new Error(`unexpected GIF block 0x${block.toString(16)} at ${cursor.offset - 1}`);
     }
 
     return { signature, width, height, frames, loop };
@@ -127,9 +172,42 @@ const gif = readFileSync(path.join(installerDir, "sidebar.gif"));
 const bmp = readFileSync(path.join(installerDir, "sidebar.bmp"));
 const dll = readFileSync(path.join(installerDir, "plugins", "x86-unicode", "AnimGif.dll"));
 const hooks = readFileSync(path.join(installerDir, "hooks.nsh"), "utf8");
+
+// The hook is read the way makensis reads it: comments removed, so a commented
+// out instruction cannot satisfy an assertion, and the hook's own !defines
+// expanded, so the assertions test the paths the installer really uses.
+function stripNsisComments(source: string) {
+    return source
+        .split("\n")
+        .map((line) => {
+            const outsideQuotes = line.split('"');
+            for (let index = 0; index < outsideQuotes.length; index += 2) {
+                const cut = outsideQuotes[index].search(/(^|\s);/);
+                if (cut !== -1) {
+                    return outsideQuotes
+                        .slice(0, index)
+                        .concat(outsideQuotes[index].slice(0, cut))
+                        .join('"');
+                }
+            }
+            return line;
+        })
+        .join("\n");
+}
+
+function expandDefines(source: string) {
+    const defines = new Map<string, string>();
+    for (const match of source.matchAll(/^!define (\w+) "?([^"\r\n]*)"?\s*$/gm)) {
+        defines.set(match[1], match[2]);
+    }
+    return source.replace(/\$\{(\w+)\}/g, (whole, name: string) => defines.get(name) ?? whole);
+}
+
+const compiledHooks = expandDefines(stripNsisComments(hooks));
+
 function hookFunction(name: string) {
     const body = new RegExp(`^Function ${name}\\s*$\\n([\\s\\S]*?)^FunctionEnd\\s*$`, "m").exec(
-        hooks,
+        compiledHooks,
     );
     if (!body) {
         throw new Error(`hooks.nsh does not define Function ${name}`);
@@ -141,6 +219,47 @@ function hookCallbacks() {
     return [...hooks.matchAll(/^!define (MUI_PAGE_CUSTOMFUNCTION_\w+) (\S+)\s*$/gm)].map(
         (match) => ({ slot: match[1], target: match[2] }),
     );
+}
+
+// Resolving a callback slot through its !define and then through the Function
+// it names keeps a swapped SHOW and LEAVE from passing, and rejects a target
+// that is merely a prefix of a real function name.
+function callbackTarget(slot: string) {
+    const match = new RegExp(`^!define ${slot} (\\S+)\\s*$`, "m").exec(hooks);
+    if (!match) {
+        throw new Error(`hooks.nsh does not define ${slot}`);
+    }
+    return match[1];
+}
+
+function registerCleanupLabel(body: string) {
+    const pops = [...body.matchAll(/^\s*Pop (\$\w+)\s*$/gm)];
+    if (pops.length === 0) {
+        throw new Error("the show callback pops no registers");
+    }
+    const labels = [...body.slice(0, pops[0].index ?? 0).matchAll(/^\s*(\w+):\s*$/gm)];
+    const cleanup = labels.at(-1);
+    if (!cleanup) {
+        throw new Error("the show callback pops registers behind no label");
+    }
+    return cleanup[1];
+}
+
+const branchingInstruction = /^\s*(?:Goto|StrCmp|StrCmpS|IntCmp|IntCmpU|IfFileExists|IfErrors)\b/;
+
+function branchTargets(body: string) {
+    const targets: string[] = [];
+    for (const line of body.split("\n")) {
+        if (!branchingInstruction.test(line)) {
+            continue;
+        }
+        for (const token of line.trim().split(/\s+/).slice(1)) {
+            if (/^[A-Za-z_]\w*:?$/.test(token)) {
+                targets.push(token.replace(/:$/, ""));
+            }
+        }
+    }
+    return targets;
 }
 
 const config = JSON.parse(
@@ -169,6 +288,21 @@ describe("Windows installer art", () => {
         expect(parsed.frames.every((frame) => frame.delay === 10)).toBe(true);
         expect(parsed.frames.every((frame) => frame.disposal === 1)).toBe(true);
         expect(parsed.frames.some((frame) => frame.transparent)).toBe(false);
+    });
+
+    it("reports a truncated GIF instead of scanning past the end", () => {
+        // Header with no global colour table, then an application extension cut
+        // off before its terminator. An unchecked sub-block loop reads undefined
+        // forever here and the worker never finishes the suite.
+        const truncated = Buffer.concat([
+            Buffer.from("GIF89a", "ascii"),
+            Buffer.from([0xa4, 0x00, 0x3a, 0x01, 0x00, 0x00, 0x00]),
+            Buffer.from([0x21, 0xff, 0x0b]),
+            Buffer.from("NETSCAPE2.0", "ascii"),
+            Buffer.from([0x03, 0x01, 0x00, 0x00]),
+        ]);
+        expect(truncated.length).toBe(31);
+        expect(() => parseGif(truncated)).toThrow(/truncated GIF/i);
     });
 
     it("keeps the GIF under the 5 MB repository limit", () => {
@@ -209,20 +343,20 @@ describe("Windows installer art", () => {
         expect(config.bundle.windows.nsis.installerHooks).toBe("installer/hooks.nsh");
     });
 
-    it("declares the MUI welcome-page callbacks and defines what they name", () => {
-        const callbacks = hookCallbacks();
-        expect(callbacks.map((callback) => callback.slot)).toEqual([
-            "MUI_PAGE_CUSTOMFUNCTION_SHOW",
-            "MUI_PAGE_CUSTOMFUNCTION_LEAVE",
-        ]);
-        for (const callback of callbacks) {
-            expect(hooks).toContain(`Function ${callback.target}`);
+    it("points both MUI callbacks at functions that exist", () => {
+        const slots = ["MUI_PAGE_CUSTOMFUNCTION_SHOW", "MUI_PAGE_CUSTOMFUNCTION_LEAVE"];
+        expect(hookCallbacks().map((callback) => callback.slot)).toEqual(slots);
+
+        const targets = slots.map((slot) => callbackTarget(slot));
+        expect(new Set(targets).size).toBe(2);
+        for (const target of targets) {
+            expect(hookFunction(target).trim().length).toBeGreaterThan(0);
         }
     });
 
     it("plays the GIF into the control it resolved and stops on leave", () => {
-        const show = hookFunction("BetterShapeSidebarShow");
-        const leave = hookFunction("BetterShapeSidebarLeave");
+        const show = hookFunction(callbackTarget("MUI_PAGE_CUSTOMFUNCTION_SHOW"));
+        const leave = hookFunction(callbackTarget("MUI_PAGE_CUSTOMFUNCTION_LEAVE"));
 
         // AnimGif must be pointed at the handle FindWindow wrote, and MUI's
         // bitmap must be detached from that same control before playback.
@@ -230,14 +364,20 @@ describe("Windows installer art", () => {
         expect(target).toBeDefined();
         expect(show).toContain(`FindWindow $${target} "" ""`);
         expect(show).toContain(`\${NSD_ClearImage} $${target}`);
-        expect(show).toContain(
-            'File /oname=$PLUGINSDIR\\bettershape-sidebar.gif "${BETTERSHAPE_SIDEBAR_GIF}"',
+        expect(leave).toMatch(/^\s*AnimGif::stop\s*$/m);
+
+        // The plug-in can only read what File wrote, so both instructions have
+        // to name one path, and that path has to be the staged copy.
+        const staged = /^\s*File \/oname=(\S+) "([^"]+)"\s*$/m.exec(show);
+        expect(staged?.[1]).toBe("$PLUGINSDIR\\bettershape-sidebar.gif");
+        expect(staged?.[2]).toMatch(/^\$\{__FILEDIR__\}\\sidebar\.gif$/);
+        expect(show).toMatch(
+            new RegExp(`AnimGif::play[^\\n]*"${escapeRegExp(staged?.[1] ?? "")}"`),
         );
-        expect(leave).toContain("AnimGif::stop");
     });
 
     it("saves every register the show callback touches", () => {
-        const show = hookFunction("BetterShapeSidebarShow");
+        const show = hookFunction(callbackTarget("MUI_PAGE_CUSTOMFUNCTION_SHOW"));
         const pushed = [...show.matchAll(/^\s*Push (\$\w+)\s*$/gm)].map((match) => match[1]);
         const popped = [...show.matchAll(/^\s*Pop (\$\w+)\s*$/gm)].map((match) => match[1]);
 
@@ -246,6 +386,46 @@ describe("Windows installer art", () => {
         for (const register of new Set(show.match(/\$R\d/g) ?? [])) {
             expect(pushed).toContain(register);
         }
+    });
+
+    it("routes every exit of the show callback through the register restore", () => {
+        const show = hookFunction(callbackTarget("MUI_PAGE_CUSTOMFUNCTION_SHOW"));
+        const popped = [...show.matchAll(/^\s*Pop (\$\w+)\s*$/gm)].map((match) => match[1]);
+        expect(popped.length).toBeGreaterThan(0);
+
+        // The only way out is falling off the end: no early exit instruction,
+        // the pops are the last instructions, and no branch reaches a label
+        // that is not defined inside the function.
+        expect(show).not.toMatch(/^\s*(?:Return|Abort|Quit)\s*$/m);
+        expect(show.trimEnd().endsWith(`Pop ${popped.at(-1)}`)).toBe(true);
+
+        const labels = new Set([...show.matchAll(/^\s*(\w+):\s*$/gm)].map((match) => match[1]));
+        expect(labels.size).toBeGreaterThan(0);
+        for (const target of branchTargets(show)) {
+            expect(labels.has(target)).toBe(true);
+        }
+    });
+
+    it("stages the GIF before it clears the bitmap MUI drew", () => {
+        const show = hookFunction(callbackTarget("MUI_PAGE_CUSTOMFUNCTION_SHOW"));
+
+        // $PLUGINSDIR is empty until something creates it, and an empty variable
+        // would send File to $OUTDIR instead of the plug-in directory.
+        const initialized = show.search(/^\s*InitPluginsDir\s*$/m);
+        const firstUse = show.search(/^(?!\s*InitPluginsDir).*(\$PLUGINSDIR)/m);
+        expect(initialized).toBeGreaterThanOrEqual(0);
+        expect(firstUse).toBeGreaterThan(initialized);
+
+        // File offers abort, retry and ignore when it cannot create its target,
+        // and ignore continues the install without the GIF. The guard has to
+        // test the path File wrote and bail to the register cleanup, so MUI's
+        // static bitmap stays attached instead of showing a blank sidebar.
+        const staged = /^\s*File \/oname=(\S+) /m.exec(show)?.[1];
+        const guard = /^\s*IfFileExists "([^"]+)" (\S+) (\S+)\s*$/m.exec(show);
+        expect(guard?.[1]).toBe(staged);
+        expect(guard?.[2]).toBe("0");
+        expect(guard?.[3]).toBe(registerCleanupLabel(show));
+        expect(show.indexOf("NSD_ClearImage")).toBeGreaterThan(show.indexOf("IfFileExists"));
     });
 
     it("anchors both asset paths to the hook directory", () => {

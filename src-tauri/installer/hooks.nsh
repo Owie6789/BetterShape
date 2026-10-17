@@ -14,6 +14,9 @@
 ; ${__FILEDIR__} inside a macro body would point at the generated script instead.
 !define BETTERSHAPE_SIDEBAR_GIF "${__FILEDIR__}\sidebar.gif"
 
+; Extracted copy of the GIF, written by the show callback before playback.
+!define BETTERSHAPE_SIDEBAR_EXTRACTED "$PLUGINSDIR\bettershape-sidebar.gif"
+
 ; MUI2 builds the welcome page as a #32770 dialog holding one SS_BITMAP static
 ; for the sidebar (Contrib/Modern UI 2/Pages/Welcome.nsh, unchanged in NSIS
 ; 3.11). NSIS destroys the previous page dialog before it creates the next one
@@ -28,7 +31,28 @@ Function BetterShapeSidebarShow
     Push $R2
     Push $R3
 
-    File /oname=$PLUGINSDIR\bettershape-sidebar.gif "${BETTERSHAPE_SIDEBAR_GIF}"
+    ; MUI stages its own sidebar exactly this way, InitPluginsDir followed by
+    ; File /oname=$PLUGINSDIR\modern-wizard.bmp (Pages/Welcome.nsh:44-45), so
+    ; the pair is the documented pattern rather than an invention here. The
+    ; call costs one comparison and a return once $PLUGINSDIR exists, and it
+    ; saves $0 and $1 when it does have to create the directory
+    ; (Source/build.cpp:3805-3812 and 3838-3842), so MUI's page function is
+    ; unaffected either way. Keeping it here means this file does not depend on
+    ; nsDialogs::Create happening to run first.
+    InitPluginsDir
+    File /oname=${BETTERSHAPE_SIDEBAR_EXTRACTED} "${BETTERSHAPE_SIDEBAR_GIF}"
+
+    ; A File that cannot create its target offers abort, retry and ignore, and
+    ; ignore continues the install without the file (Source/exehead/exec.c:562-
+    ; 573, with ignore as the default button per Source/script.cpp:5445-5449).
+    ; Quit here in that case and leave MUI's static bitmap attached, because a
+    ; still sidebar beats a blank one. Playback failures inside the plug-in
+    ; cannot be caught the same way: play returns without pushing a result when
+    ; LoadGIF yields no frames (plugin-animgif animgif.cpp:203-204, whose
+    ; ERRORMSG is compiled out at winimage.cpp:40). A write error after the
+    ; file opened is fatal for any File instruction in NSIS
+    ; (Source/exehead/exec.c:596-605) and no hook can intercept it.
+    IfFileExists "${BETTERSHAPE_SIDEBAR_EXTRACTED}" 0 BetterShapeSidebarDone
 
     ; Fall back to the installer window itself if the page is not nested in a
     ; dialog of its own.
@@ -51,7 +75,7 @@ Function BetterShapeSidebarShow
             ; MUI deletes it with ${NSD_FreeImage} once the page closes, which
             ; would leave the control holding a freed handle.
             ${NSD_ClearImage} $R2
-            AnimGif::play /NOUNLOAD /HWND=$R2 /FIT=BOTH /HALIGN=0 /VALIGN=0 "$PLUGINSDIR\bettershape-sidebar.gif"
+            AnimGif::play /NOUNLOAD /HWND=$R2 /FIT=BOTH /HALIGN=0 /VALIGN=0 "${BETTERSHAPE_SIDEBAR_EXTRACTED}"
             Goto BetterShapeSidebarDone
     BetterShapeSidebarNext:
         StrCpy $R1 $R2
@@ -66,6 +90,15 @@ FunctionEnd
 ; AnimGif::stop is safe when play never ran: the plug-in checks its own state
 ; and the window handle before it restores anything. play also calls stop
 ; first, so returning to this page with Back cannot double-subscribe.
+;
+; stop does end the animation worker with TerminateThread rather than a
+; cooperative join (plugin-animgif winimage.cpp:236-240), which is the risk
+; every reviewer of this file should know about. Calling it is still the only
+; correct option from a hook: this GIF's loop count is 0, so the worker's
+; condition is literally "while true" (winimage.cpp:130) and skipping stop
+; would leave it painting into a destroyed window for the rest of the process.
+; Fixing the termination itself means rebuilding the plug-in, which is a
+; decision for a maintainer and is recorded in installer/README.md.
 Function BetterShapeSidebarLeave
     AnimGif::stop
 FunctionEnd

@@ -161,3 +161,107 @@ pushed. They are recorded because the fix is part of the diff.
 - Whether a human wants a 3.9 MB asset in the repository for a 10 s animation. The
   size is a deliberate trade against the 5 MB CI limit and is stated in the pull
   request.
+
+## Review round 1
+
+Head `9cc6d23`. Sourcery filed 7 inline comments, DeepSource 7 inline comments
+with an overall grade B and Reliability D, CodeAnt a passed quality gate plus 2
+nitpicks and a medium risk rating, Kilo Code "no issues, merge", SonarCloud 0
+new issues, CodeRabbit skipped because the base is not `main`, Buoy "no new
+design drift". Everything below was answered on the follow-up commit.
+
+### Fixed
+
+- A truncated GIF killed the test worker instead of failing a test. Sourcery
+  `4304143096` and CodeAnt nitpick 1 were right, and the real failure was worse
+  than either described. `readSubBlocks` looped on `buffer[offset] !== 0`; past
+  the end that reads `undefined`, `size` becomes `undefined`, `offset` becomes
+  `NaN`, and `subarray(NaN, NaN)` allocates until the fork dies. Reproduced with
+  a 31-byte fixture: vitest reports `Worker exited unexpectedly`, no test fails,
+  and it prints its own warning that the run may contain false positives. Every
+  read in the parser is now bounds-checked through `requireBytes`, and a test
+  feeds it the truncated stream.
+- A skipped extraction left a blank sidebar. Sourcery `4304143088` and
+  `4304143091`. `File` offers abort, retry and ignore when it cannot create its
+  target (`Source/exehead/exec.c:562-573`, ignore as the default button per
+  `Source/script.cpp:5445-5449`, allowskipfiles on by default per
+  `Source/build.cpp:196`). Ignore continued the install into a hook that had
+  already detached MUI's bitmap, so the welcome page showed nothing at all. An
+  `IfFileExists` guard on the staged path now bails to the register cleanup with
+  MUI's bitmap still attached.
+- `$PLUGINSDIR` was assumed live. Found while writing that guard. `$PLUGINSDIR`
+  is empty until something creates it (`Source/build.cpp:3805-3846`), and a
+  `File /oname=$PLUGINSDIR\...` against an empty variable falls back to
+  `$OUTDIR` (`Source/exehead/exec.c:520-524`). It happens to be live on this
+  page, because MUI's `mui.WelcomePage.GUIInit` calls `InitPluginsDir` before it
+  stages its own bitmap (`Pages/Welcome.nsh:44-45`) and `nsDialogs::Create` runs
+  before the show callback, so this was a latent dependency rather than a live
+  bug. The hook now calls `InitPluginsDir` itself, which is the documented
+  pattern, costs one comparison and a return once the directory exists, and
+  saves `$0` and `$1` when it has to create it.
+- Four hook tests were weaker than they read. Sourcery `4304143102`,
+  `4304143104`, `4304143109` and CodeAnt nitpick 2. Callback slots are now
+  resolved through their `!define` to the `Function` they name, so swapping SHOW
+  and LEAVE fails, and a prefix-only target fails instead of passing because
+  some longer name contains it. Instructions are matched against
+  comment-stripped text, so a commented out `play` fails. New invariants: no
+  `Return`, `Abort` or `Quit` in the show callback, the pops are its last
+  instructions, every branch target is a label inside the function,
+  `InitPluginsDir` precedes the first use of `$PLUGINSDIR`, and the guard tests
+  the staged path and bails to the label the pops follow.
+- `parseGif` was split. DeepSource `4304145552` reported cyclomatic complexity
+  11. The extension and descriptor branches are now helpers over a cursor, which
+  is also what made the bounds checks readable.
+
+All eight changes were mutation-tested: dropping `InitPluginsDir`, dropping the
+guard, swapping the callback targets, commenting out `play`, inserting an early
+`Return`, naming a prefix-only target, pointing the guard at the wrong label,
+and reverting `readSubBlocks` to the unchecked loop. Each one fails at least one
+named test, and the last one takes the worker down.
+
+### Rejected, with evidence
+
+- `AnimGif::stop` uses `TerminateThread`. Sourcery `4304143082` is right about
+  the mechanism (`winimage.cpp:236-240`) and wrong that the hook can stop
+  cooperatively and wait: the plug-in exports no cooperative stop, and the
+  shipped GIF's loop count is 0, so the worker condition is literally
+  `while true` (`winimage.cpp:130`). Not calling `stop` would leave that thread
+  painting into a destroyed window for the rest of the process. Fixing the
+  termination means forking and rebuilding the DLL, which trades a hash-pinned
+  vendored binary for a standing build obligation. Recorded in
+  `installer/README.md` as a maintainer decision.
+- Top-level `function` declarations in the test file. DeepSource `4304145547`,
+  `4304145555`, `4304145558`, `4304145559`, `4304145562`. The file is an ES
+  module, so none of it reaches the global scope, and 28 of the 104 `.ts` files
+  under `tests/` declare helper functions the same way. `npm run lint` reports 0
+  errors on this file. Wrapping them in IIFEs would make it the only test in the
+  repository written that way.
+- `${BETTERSHAPE_SIDEBAR_GIF}` inside a string literal. DeepSource `4304145565`
+  reads NSIS syntax as a broken JS template literal. The assertion that carried
+  it is gone regardless: the tests expand the hook's own defines and match the
+  path as a regular expression.
+- A runtime playback check, which CodeAnt's medium risk rating asks for. It
+  needs Windows or Wine and this sandbox has neither. Still open, still named in
+  the pull request.
+
+### Mistakes made while reviewing, not in the diff
+
+- The mutation harness printed `PASS (mutation NOT caught)` for all eight
+  mutations because it read `$?` after `out=$(timeout ... | tr -d '\r')`, which
+  is the exit code of `tr`. The per-mutation summaries were right and the
+  verdicts were inverted. AGENTS.md already states that a piped command reports
+  the exit code of the pipe. The interesting case was re-run with the redirect
+  outside the pipeline before any of it was believed.
+- `npx prettier --write` rewrote 619 lines of the test file to 2-space indent
+  and 80 columns. Prettier is not a dependency of this repository and has no
+  config here, so `npx` fetched a fresh copy and applied its defaults. Reverted
+  by rewriting the file in the repository's own style. Do not format anything in
+  this repository with a tool that is not in `package.json`.
+- The pull request body and the installer README both said
+  `build-installers.yml` compiles the installer for this pull request. It did
+  not run. No Actions run has started in this repository since
+  `2026-10-14T22:20Z`, none for this branch, and `actions/permissions` returns
+  403 with this token, so whether Actions is disabled or out of budget is a
+  human question. The README now describes the evidence that exists, a local
+  makensis build of the generated script, and the pull request body was
+  corrected to match.

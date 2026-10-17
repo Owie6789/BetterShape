@@ -71,11 +71,58 @@ before it writes the include line, so `${__FILEDIR__}` is absolute here.
 - In passive mode the template's `SkipIfPassive` aborts the welcome page before
   the show callback, and silent mode has no UI, so neither leaves an animation
   running.
+- `InitPluginsDir` runs before the extraction. `$PLUGINSDIR` is empty until
+  something creates it, and `File /oname=$PLUGINSDIR\...` against an empty
+  variable would land in `$OUTDIR` instead. MUI stages its own sidebar with the
+  same pair, `InitPluginsDir` then `File /oname=$PLUGINSDIR\modern-wizard.bmp`
+  (`Contrib/Modern UI 2/Pages/Welcome.nsh:44-45`). The call costs one
+  comparison and a return once the directory exists, and it saves `$0` and `$1`
+  when it does have to create it (`Source/build.cpp:3805-3842`), so MUI's page
+  function is unaffected either way. Keeping it here means the hook does not
+  depend on `nsDialogs::Create` happening to run first.
 - The GIF is extracted to `$PLUGINSDIR` each time the show callback runs. That
   is a 3.9 MB write on Back navigation, which is cheaper than a guard that
   could skip a re-extract after an interrupted one.
+- An `IfFileExists` guard follows the extraction. A `File` that cannot create
+  its target offers abort, retry and ignore, and ignore continues the install
+  without the file (`Source/exehead/exec.c:562-573`, with ignore as the default
+  button per `Source/script.cpp:5445-5449`). The guard takes that exit and
+  leaves MUI's static bitmap attached instead of clearing it for an animation
+  that cannot start.
 - Registers `$R0` to `$R3` are pushed and popped. These callbacks run inside
   MUI's own page function, and nsDialogs macros use the same register block.
+
+## Residual risks
+
+Three failure modes stay open. All three belong to the vendored plug-in or to
+NSIS rather than to this hook, and none of them is reachable from a hook.
+
+- `AnimGif::stop` ends the animation worker with `TerminateThread`
+  (plugin-animgif `winimage.cpp:236-240`) rather than a cooperative join, which
+  is the pattern Microsoft documents as unsafe. Calling it is still the only
+  correct option here: the shipped GIF loops forever, its loop count is 0, so
+  the worker condition is literally "while true" (`winimage.cpp:130`), and
+  skipping the call would leave that thread painting into a destroyed window
+  for the rest of the process. Fixing the termination itself means forking and
+  rebuilding the plug-in, which trades a hash-pinned vendored binary for a
+  build obligation. That trade belongs to a maintainer, and it is recorded here
+  rather than made silently in the hook.
+- A GIF that reaches the plug-in but fails to decode leaves the sidebar blank.
+  `play` returns without pushing a result when `LoadGIF` yields no frames
+  (`animgif.cpp:203-204`), and its `ERRORMSG` is compiled out
+  (`winimage.cpp:40`), so the hook cannot detect that failure and restore the
+  bitmap it already cleared. The `IfFileExists` guard covers the case that can
+  happen in the field, a skipped extraction. A corrupt asset in the repository
+  is covered by the test suite, which parses every frame.
+- Extracting 3.9 MB raises the free space the installer needs on the volume
+  behind `$TEMP` by that much. A `File` that opens its target and then fails to
+  write is fatal for every `File` instruction in NSIS
+  (`Source/exehead/exec.c:596-605`), and no hook can intercept that message
+  box. The Tauri CLI 2.10.0 template already puts the WebView2 bootstrapper on
+  that volume, by download at `installer.nsi:541` in the default
+  `downloadBootstrapper` mode or by `File` at `installer.nsi:555` in
+  `embedBootstrapper` mode, so an install that cannot spare 3.9 MB is close to
+  the point where it cannot finish anyway.
 
 ## Frame and file limits
 
@@ -160,17 +207,33 @@ AnimGif.dll  a1fa2e0191f986824f5fc0ef62aee8b4b25695cc56d4b00fecdc1c92f8ea237f   
 
 `tests/release/installer-art.test.ts` checks the asset dimensions, the GIF
 frame count, delay and per-frame geometry, the BMP dimensions and bit depth,
-the plug-in hash, and that `tauri.conf.json` still points at all of it. For the
-hook it checks structure rather than literal lines: both MUI callback defines
-name a function the file actually defines, `play` is in the show callback and
-`stop` is in the leave callback, the register AnimGif targets is the one
-`FindWindow` writes, the pushes and pops balance, and both asset paths are
-anchored to `${__FILEDIR__}`.
+the plug-in hash, and that `tauri.conf.json` still points at all of it. Every
+read the GIF parser makes is bounds-checked, and one test feeds it a truncated
+stream to prove that a malformed asset fails with a message instead of walking
+off the end of the buffer and taking the worker with it.
 
-Compiling the installer needs Windows or Wine and makensis. CI does that in
-`build-installers.yml`, which runs on every pull request against NSIS 3.11,
-the version Tauri CLI 2.10.0 downloads. When the Tauri CLI is upgraded, compare
-the new `crates/tauri-bundler/src/bundle/windows/nsis/installer.nsi` with the
-version this hook targets. A change to the `installer_hooks` include point, to
-the welcome page declaration, or to the welcome page image control is what can
+For the hook it checks structure rather than literal lines. It reads the file
+the way makensis does, with comments stripped and the hook's own `!define`
+values expanded, so a commented out instruction cannot satisfy an assertion and
+the paths under test are the ones the installer really uses. On top of that it
+checks that both callback slots resolve through their defines to functions the
+file defines, that the two targets differ, that `play` sits in the callback the
+SHOW slot names and `stop` in the one the LEAVE slot names, that the register
+AnimGif targets is the one `FindWindow` writes and the one `NSD_ClearImage`
+detaches, that the pushes and pops balance, that no exit instruction can bypass
+the pops and no branch reaches a label outside the function, that
+`InitPluginsDir` precedes the first use of `$PLUGINSDIR`, that the
+`IfFileExists` guard tests the path `File` wrote and bails to the label the
+pops follow, and that both asset paths are anchored to `${__FILEDIR__}`.
+
+Compiling the installer needs Windows or Wine and makensis. `build-installers.yml`
+is written to do that on `windows-latest` for every pull request, against NSIS
+3.11, the version Tauri CLI 2.10.0 downloads. Only `ci.yml` and `release.yml`
+are on the default branch, and no Actions run started in this repository for
+the pull request that introduced this hook, so the compile evidence recorded in
+`.dump/app/audits/` is a local makensis build of the generated script rather
+than a CI artifact. When the Tauri CLI is upgraded, compare the new
+`crates/tauri-bundler/src/bundle/windows/nsis/installer.nsi` with the version
+this hook targets. A change to the `installer_hooks` include point, to the
+welcome page declaration, or to the welcome page image control is what can
 break it.
