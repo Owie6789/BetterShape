@@ -29,6 +29,8 @@ A dossier that turns out to need a change in an earlier dossier gets a row in th
 
 To create all 33 at once instead of by hand, run `python3 engineering/issues/create_issues.py`. It reads the same fields, adds `Backlog`, skips titles that already exist, and supports `--dry-run`. See `engineering/issues/README.md`.
 
+For how to drive a fresh agent through one dossier, including the kickoff line, the follow-up messages, and the review checklist, see `engineering/agent-handoff.md`.
+
 ## Label set
 
 | Label | Meaning |
