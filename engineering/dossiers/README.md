@@ -24,8 +24,10 @@ A dossier that turns out to need a change in an earlier dossier gets a row in th
 1. Create the labels in the table below once, in the repository settings.
 2. Open the dossier and copy the `Issue title` value from the field table at the top.
 3. Copy the body, starting from the line after the field table.
-4. Add the labels listed for that dossier.
+4. Add the labels listed for that dossier, plus `Backlog`.
 5. Paste the block under "Prompt for a fresh agent" into a new chat when you are ready to implement it.
+
+To create all 33 at once instead of by hand, run `python3 engineering/issues/create_issues.py`. It reads the same fields, adds `Backlog`, skips titles that already exist, and supports `--dry-run`. See `engineering/issues/README.md`.
 
 ## Label set
 
